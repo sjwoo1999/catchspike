@@ -1,13 +1,45 @@
+// lib/main.dart
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:kakao_flutter_sdk_common/kakao_flutter_sdk_common.dart';
+import 'package:provider/provider.dart';
+
 import 'screens/home/home_screen.dart';
 import 'screens/calendar/calendar_screen.dart';
 import 'screens/record/record_screen.dart';
 import 'screens/map/map_screen.dart';
 import 'widgets/custom_drawer.dart';
 import 'utils/theme.dart';
+import 'providers/user_provider.dart';
+import 'utils/global_keys.dart'; // GlobalKey import
 
-void main() {
-  runApp(const MyApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // 환경 변수 로드
+  try {
+    await dotenv.load(fileName: ".env");
+    print("✅ .env 파일을 성공적으로 로드했습니다.");
+  } catch (e) {
+    print("❌ .env 파일 로드 실패: $e");
+  }
+
+  // Kakao SDK 초기화
+  KakaoSdk.init(
+    nativeAppKey: dotenv.env['KAKAO_NATIVE_APP_KEY'] ?? '',
+    javaScriptAppKey: dotenv.env['JAVASCRIPT_APP_KEY'] ?? '',
+  );
+
+  // 앱 실행
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => UserProvider()),
+        // 다른 프로바이더들을 여기에 추가하세요.
+      ],
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -19,6 +51,8 @@ class MyApp extends StatelessWidget {
       title: 'CATCHSPIKE',
       theme: AppTheme.lightTheme,
       home: const MainScreen(),
+      debugShowCheckedModeBanner: false, // 디버그 배너 제거
+      scaffoldMessengerKey: scaffoldMessengerKey, // GlobalKey 할당
     );
   }
 }

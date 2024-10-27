@@ -45,5 +45,26 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	
+	<!-- 네트워크 권한 설정 -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+		<key>NSAllowsArbitraryLoadsInWebContent</key>
+		<true/>
+	</dict>
+	
+	<!-- 카카오 URL 스킴 설정 -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<!-- 카카오 네이티브 앱 키를 이용하여 URL 스킴 설정 -->
+				<string>kakaoef7e5df8ab96fd97e61be5c744512413</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>
