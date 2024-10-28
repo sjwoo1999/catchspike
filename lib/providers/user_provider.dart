@@ -2,20 +2,27 @@
 import 'package:flutter/material.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 
-class UserProvider extends ChangeNotifier {
+class UserProvider with ChangeNotifier {
   User? _user;
 
   User? get user => _user;
 
-  void setUser(User user) {
-    _user = user;
-    print("UserProvider: setUser 호출 - 사용자: ${user.kakaoAccount?.email}");
-    notifyListeners(); // 상태 변화 알림
+  void setUser(User newUser) {
+    print('UserProvider setUser 호출됨');
+    print('이전 사용자: ${_user?.id}');
+    print('새로운 사용자: ${newUser.id}');
+
+    _user = newUser;
+    notifyListeners();
+
+    print('UserProvider setUser 완료');
+    print('현재 사용자: ${_user?.id}');
   }
 
   void clearUser() {
+    print('UserProvider clearUser 호출됨');
     _user = null;
-    print("UserProvider: clearUser 호출");
-    notifyListeners(); // 상태 변화 알림
+    notifyListeners();
+    print('UserProvider clearUser 완료');
   }
 }

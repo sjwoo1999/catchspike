@@ -34,7 +34,7 @@ Future<void> main() async {
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => UserProvider()),
+        ChangeNotifierProvider<UserProvider>(create: (_) => UserProvider()),
         // 다른 프로바이더들을 여기에 추가하세요.
       ],
       child: const MyApp(),
@@ -50,7 +50,17 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'CATCHSPIKE',
       theme: AppTheme.lightTheme,
-      home: const MainScreen(),
+      home: Consumer<UserProvider>(
+        builder: (context, userProvider, child) {
+          // Provider 상태 디버깅을 위한 리스너 추가
+          Provider.of<UserProvider>(context).addListener(() {
+            print('UserProvider 상태 변경됨');
+            print(
+                '현재 사용자: ${Provider.of<UserProvider>(context, listen: false).user?.id}');
+          });
+          return MainScreen();
+        },
+      ),
       debugShowCheckedModeBanner: false, // 디버그 배너 제거
       scaffoldMessengerKey: scaffoldMessengerKey, // GlobalKey 할당
     );
