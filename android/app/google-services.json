@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "784791191729",
+    "project_id": "catchspike-8163d",
+    "storage_bucket": "catchspike-8163d.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:784791191729:android:5ccafea24a1bffdedaa290",
+        "android_client_info": {
+          "package_name": "com.example.catchspike"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAvOSKpuKdgmAUjYr7VfJ80SaMNAgszSPE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

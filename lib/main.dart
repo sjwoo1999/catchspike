@@ -7,8 +7,9 @@ import 'screens/home/home_screen.dart';
 import 'screens/report/report_screen.dart';
 import 'screens/community/community_screen.dart';
 import 'screens/achievement/achievement_screen.dart';
+import 'screens/onboarding/onboarding_screen.dart';
 import 'widgets/custom_drawer.dart';
-import 'utils/theme.dart'
+import 'utils/theme.dart';
 import 'providers/user_provider.dart';
 import 'utils/global_keys.dart';
 
@@ -69,12 +70,16 @@ class MyApp extends StatelessWidget {
       },
       home: Consumer<UserProvider>(
         builder: (context, userProvider, child) {
-          Provider.of<UserProvider>(context).addListener(() {
+          // UserProvider 상태 변경 리스너
+          userProvider.addListener(() {
             print('UserProvider 상태 변경됨');
-            print(
-                '현재 사용자: ${Provider.of<UserProvider>(context, listen: false).user?.id}');
+            print('현재 사용자: ${userProvider.user?.id}');
           });
-          return const MainScreen();
+
+          // 로그인 상태에 따라 화면 분기
+          return userProvider.user == null
+              ? const OnboardingScreen()
+              : const MainScreen();
         },
       ),
       debugShowCheckedModeBanner: false,
