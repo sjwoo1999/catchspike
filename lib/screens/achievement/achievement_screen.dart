@@ -1,15 +1,53 @@
-// lib/screens/achievements/achievements_screen.dart
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'components/achievement_badge.dart';
 import 'components/stats_card.dart';
 import 'components/streak_card.dart';
 import 'components/share_achievement_card.dart';
 
+// 컨트롤러 정의
+class AchievementsController extends GetxController {
+  final RxBool isCollapsed = false.obs;
+  final RxInt currentStreak = 7.obs;
+  final RxInt longestStreak = 14.obs;
+  final RxInt totalMeals = 42.obs;
+  final RxInt averageScore = 85.obs;
+  final RxInt perfectDays = 5.obs;
+
+  void updateCollapseState(bool collapsed) {
+    isCollapsed.value = collapsed;
+  }
+
+  void updateStats({
+    int? streak,
+    int? longest,
+    int? meals,
+    int? score,
+    int? perfect,
+  }) {
+    if (streak != null) currentStreak.value = streak;
+    if (longest != null) longestStreak.value = longest;
+    if (meals != null) totalMeals.value = meals;
+    if (score != null) averageScore.value = score;
+    if (perfect != null) perfectDays.value = perfect;
+  }
+
+  void refreshData() {
+    // API 호출 또는 데이터 새로고침 로직
+    update();
+  }
+}
+
 class AchievementsScreen extends StatelessWidget {
-  const AchievementsScreen({super.key});
+  AchievementsScreen({super.key}) {
+    // 컨트롤러 초기화
+    Get.put(AchievementsController());
+  }
 
   @override
   Widget build(BuildContext context) {
+    final controller = Get.find<AchievementsController>();
+
     return Scaffold(
       body: CustomScrollView(
         slivers: [
@@ -22,13 +60,12 @@ class AchievementsScreen extends StatelessWidget {
             flexibleSpace: LayoutBuilder(
               builder: (BuildContext context, BoxConstraints constraints) {
                 final double appBarHeight = constraints.biggest.height;
-                // appBarHeight가 kToolbarHeight에 가까워지면 타이틀만 표시
-                final bool isCollapsed = appBarHeight < 120;
+                controller.updateCollapseState(appBarHeight < 120);
 
                 return FlexibleSpaceBar(
                   centerTitle: false,
                   titlePadding: const EdgeInsets.only(left: 16, bottom: 16),
-                  title: isCollapsed
+                  title: Obx(() => controller.isCollapsed.value
                       ? const Text(
                           '나의 건강 성과',
                           style: TextStyle(
@@ -52,7 +89,7 @@ class AchievementsScreen extends StatelessWidget {
                               ),
                             ),
                           ],
-                        ),
+                        )),
                   background: Container(
                     decoration: const BoxDecoration(
                       gradient: LinearGradient(
@@ -81,7 +118,7 @@ class AchievementsScreen extends StatelessWidget {
                               fontSize: 16,
                             ),
                           ),
-                          const SizedBox(height: 40), // 텍스트 겹침 방지를 위한 여백
+                          const SizedBox(height: 40),
                         ],
                       ),
                     ),
@@ -91,7 +128,7 @@ class AchievementsScreen extends StatelessWidget {
             ),
           ),
 
-          // 나머지 내용은 동일
+          // 컨텐츠
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
@@ -110,16 +147,16 @@ class AchievementsScreen extends StatelessWidget {
                   const SizedBox(height: 16),
                   const RecentBadgeGrid(),
                   const SizedBox(height: 24),
-                  const StreakCard(
-                    currentStreak: 7,
-                    longestStreak: 14,
-                  ),
+                  Obx(() => StreakCard(
+                        currentStreak: controller.currentStreak.value,
+                        longestStreak: controller.longestStreak.value,
+                      )),
                   const SizedBox(height: 24),
-                  const StatsCard(
-                    totalMeals: 42,
-                    averageScore: 85,
-                    perfectDays: 5,
-                  ),
+                  Obx(() => StatsCard(
+                        totalMeals: controller.totalMeals.value,
+                        averageScore: controller.averageScore.value,
+                        perfectDays: controller.perfectDays.value,
+                      )),
                   const SizedBox(height: 24),
                   ShareAchievementCard(
                     onShare: () => _shareToInstagram(context),
@@ -136,5 +173,6 @@ class AchievementsScreen extends StatelessWidget {
 
   void _shareToInstagram(BuildContext context) {
     // 인스타그램 공유 로직
+    Get.find<AchievementsController>().refreshData(); // 공유 후 데이터 새로고침
   }
 }

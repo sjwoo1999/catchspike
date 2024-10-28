@@ -7,9 +7,8 @@ import 'screens/home/home_screen.dart';
 import 'screens/report/report_screen.dart';
 import 'screens/community/community_screen.dart';
 import 'screens/achievement/achievement_screen.dart';
-import 'screens/onboarding/onboarding_screen.dart';
 import 'widgets/custom_drawer.dart';
-import 'utils/theme.dart';
+import 'utils/theme.dart'
 import 'providers/user_provider.dart';
 import 'utils/global_keys.dart';
 
@@ -60,7 +59,7 @@ class MyApp extends StatelessWidget {
         ),
       ),
       onGenerateRoute: (settings) {
-        if (settings.name == '/main') {
+        if (settings.name == '/') {
           final int? index = settings.arguments as int?;
           return MaterialPageRoute(
             builder: (context) => MainScreen(initialIndex: index),
@@ -70,16 +69,11 @@ class MyApp extends StatelessWidget {
       },
       home: Consumer<UserProvider>(
         builder: (context, userProvider, child) {
-          // 로그인 상태 변경 감지
-          userProvider.addListener(() {
+          Provider.of<UserProvider>(context).addListener(() {
             print('UserProvider 상태 변경됨');
-            print('현재 사용자: ${userProvider.user?.id}');
+            print(
+                '현재 사용자: ${Provider.of<UserProvider>(context, listen: false).user?.id}');
           });
-
-          // 로그인 여부에 따라 화면 분기
-          if (userProvider.user == null) {
-            return const OnboardingScreen();
-          }
           return const MainScreen();
         },
       ),
@@ -107,16 +101,6 @@ class _MainScreenState extends State<MainScreen> {
     _selectedIndex = widget.initialIndex ?? 0;
   }
 
-  @override
-  void didUpdateWidget(MainScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.initialIndex != null && widget.initialIndex != _selectedIndex) {
-      setState(() {
-        _selectedIndex = widget.initialIndex!;
-      });
-    }
-  }
-
   final List<Widget> _screens = [
     HomeScreen(),
     ReportScreen(),
@@ -126,12 +110,6 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 로그인 상태 확인
-    final userProvider = Provider.of<UserProvider>(context);
-    if (userProvider.user == null) {
-      return const OnboardingScreen();
-    }
-
     return Scaffold(
       key: _scaffoldKey,
       appBar: AppBar(
