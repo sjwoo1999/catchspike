@@ -5,9 +5,9 @@ import 'package:kakao_flutter_sdk_common/kakao_flutter_sdk_common.dart';
 import 'package:provider/provider.dart';
 
 import 'screens/home/home_screen.dart';
-import 'screens/calendar/calendar_screen.dart';
-import 'screens/record/record_screen.dart';
-import 'screens/map/map_screen.dart';
+import 'screens/report/report_screen.dart';
+import 'screens/community/community_screen.dart';
+import 'screens/achievement/achievement_screen.dart';
 import 'widgets/custom_drawer.dart';
 import 'utils/theme.dart';
 import 'providers/user_provider.dart';
@@ -93,9 +93,9 @@ class _MainScreenState extends State<MainScreen> {
 
   final List<Widget> _screens = [
     HomeScreen(),
-    CalendarScreen(),
-    RecordScreen(),
-    MapScreen(),
+    ReportScreen(),
+    CommunityScreen(),
+    AchievementScreen(),
   ];
 
   @override
@@ -132,27 +132,34 @@ class _MainScreenState extends State<MainScreen> {
         child: BottomNavigationBar(
           items: const [
             BottomNavigationBarItem(
-              icon: Icon(Icons.home),
+              icon: Icon(Icons.home_outlined),
+              activeIcon: Icon(Icons.home),
               label: '홈',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.calendar_month),
-              label: '달력',
+              icon: Icon(Icons.insert_chart_outlined),
+              activeIcon: Icon(Icons.insert_chart),
+              label: '리포트',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.timer),
-              label: '기록',
+              icon: Icon(Icons.people_outline),
+              activeIcon: Icon(Icons.people),
+              label: '커뮤니티',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.map),
-              label: '지도',
+              icon: Icon(Icons.emoji_events_outlined),
+              activeIcon: Icon(Icons.emoji_events),
+              label: '성과',
             ),
           ],
           currentIndex: _selectedIndex,
-          selectedItemColor: Theme.of(context).primaryColor,
+          selectedItemColor: const Color(0xFFE30547),
           unselectedItemColor: Colors.grey,
-          onTap: (index) => setState(() => _selectedIndex = index),
           type: BottomNavigationBarType.fixed,
+          showUnselectedLabels: true, // 선택되지 않은 라벨도 표시
+          selectedFontSize: 12, // 선택된 아이템의 폰트 크기
+          unselectedFontSize: 12, // 선택되지 않은 아이템의 폰트 크기
+          onTap: (index) => setState(() => _selectedIndex = index),
         ),
       ),
     );

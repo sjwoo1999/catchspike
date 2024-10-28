@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
-class CalendarContent extends StatelessWidget {
-  CalendarContent({super.key});
+class AchievementContent extends StatelessWidget {
+  AchievementContent({super.key});
 
   @override
   Widget build(BuildContext context) {
     return const Center(
-      child: Text('달력 화면'),
+      child: Text('성과 화면'),
     );
   }
 }
