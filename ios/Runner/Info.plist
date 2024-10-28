@@ -66,5 +66,11 @@
 			</array>
 		</dict>
 	</array>
+
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>식단 기록을 위해 사진에 접근하려고 합니다.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>음식 사진 촬영을 위해 카메라에 접근하려고 합니다.</string>
+
 </dict>
 </plist>

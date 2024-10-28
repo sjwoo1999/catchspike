@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../providers/user_provider.dart';
 import 'dart:math';
+import '../screens/meal_record_screen.dart';
 
 class HomeContent extends StatelessWidget {
   const HomeContent({super.key});
@@ -123,6 +124,12 @@ class HomeContent extends StatelessWidget {
                         child: ElevatedButton(
                           onPressed: () {
                             // 식사 기록 기능 구현
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const MealRecordScreen(),
+                              ),
+                            );
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFFE30547),
