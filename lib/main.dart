@@ -95,7 +95,7 @@ class _MainScreenState extends State<MainScreen> {
     HomeScreen(),
     ReportScreen(),
     CommunityScreen(),
-    AchievementScreen(),
+    AchievementsScreen(),
   ];
 
   @override
