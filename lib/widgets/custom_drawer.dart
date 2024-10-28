@@ -86,9 +86,8 @@ class _LoggedInMenuContentState extends State<LoggedInMenuContent> {
 
     return ListView(
       children: [
-        // 프로필 영역
         Container(
-          color: Theme.of(context).primaryColor,
+          color: const Color(0xFFE30547), // #E30547 색상으로 변경
           padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 16),
           child: Row(
             children: [
@@ -109,7 +108,7 @@ class _LoggedInMenuContentState extends State<LoggedInMenuContent> {
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 22,
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w500, // 글자 굵기 조정
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -117,7 +116,8 @@ class _LoggedInMenuContentState extends State<LoggedInMenuContent> {
                       userEmail,
                       style: const TextStyle(
                         color: Colors.white70,
-                        fontSize: 14,
+                        fontSize: 12,
+                        fontWeight: FontWeight.normal, // 기본 굵기
                       ),
                     ),
                   ],
@@ -208,7 +208,7 @@ class _LoggedOutMenuContentState extends State<LoggedOutMenuContent> {
     return ListView(
       children: [
         Container(
-          color: Theme.of(context).primaryColor,
+          color: const Color(0xFFE30547),
           padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 16),
           child: Column(
             children: [
@@ -224,7 +224,7 @@ class _LoggedOutMenuContentState extends State<LoggedOutMenuContent> {
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 22,
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
               const SizedBox(height: 8),

@@ -49,10 +49,22 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'CATCHSPIKE',
-      theme: AppTheme.lightTheme,
+      theme: ThemeData(
+        fontFamily: 'GmarketSans',
+        primaryColor: const Color(0xFFE30547), // #E30547 색상 설정
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFFE30547),
+          foregroundColor: Colors.white, // AppBar 텍스트 색상
+          elevation: 0,
+          titleTextStyle: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w500, // 글자 굵기 조정
+            fontFamily: 'GmarketSans',
+          ),
+        ),
+      ),
       home: Consumer<UserProvider>(
         builder: (context, userProvider, child) {
-          // Provider 상태 디버깅을 위한 리스너 추가
           Provider.of<UserProvider>(context).addListener(() {
             print('UserProvider 상태 변경됨');
             print(
@@ -61,8 +73,8 @@ class MyApp extends StatelessWidget {
           return MainScreen();
         },
       ),
-      debugShowCheckedModeBanner: false, // 디버그 배너 제거
-      scaffoldMessengerKey: scaffoldMessengerKey, // GlobalKey 할당
+      debugShowCheckedModeBanner: false,
+      scaffoldMessengerKey: scaffoldMessengerKey,
     );
   }
 }
@@ -92,7 +104,7 @@ class _MainScreenState extends State<MainScreen> {
       key: _scaffoldKey,
       appBar: AppBar(
         title: const Text('CATCHSPIKE'),
-        centerTitle: true,
+        centerTitle: false,
         actions: [
           IconButton(
             icon: const Icon(Icons.menu),
