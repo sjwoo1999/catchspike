@@ -25,11 +25,17 @@ Future<void> main() async {
 
     final functionUrl = dotenv.env['FIREBASE_FUNCTION_URL'];
     final kakaoNativeKey = dotenv.env['KAKAO_NATIVE_APP_KEY'];
+    final googleApiKey = dotenv.env['GOOGLE_API_KEY']; // Google API 키 추가
+
     Logger.log("Function URL: $functionUrl");
     Logger.log("Kakao Native Key: $kakaoNativeKey");
+    Logger.log("Google API Key: $googleApiKey"); // Google API 키 로깅
 
     if (functionUrl == null || functionUrl.isEmpty) {
       throw Exception('FIREBASE_FUNCTION_URL이 설정되지 않았습니다.');
+    }
+    if (googleApiKey == null || googleApiKey.isEmpty) {
+      throw Exception('GOOGLE_API_KEY가 설정되지 않았습니다.');
     }
   } catch (e) {
     Logger.log("❌ .env 파일 또는 환경변수 로드 실패: $e");
