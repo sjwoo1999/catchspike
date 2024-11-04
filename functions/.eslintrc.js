@@ -21,16 +21,7 @@ module.exports = {
       env: {
         mocha: true,
       },
-      rules: {
-        "no-restricted-globals": ["error", "name", "length"],
-        "prefer-arrow-callback": "error",
-        "quotes": ["error", "double", {
-          "allowTemplateLiterals": true,
-        }],
-        "indent": "off",
-        "semi": "off",
-        "max-len": "off",
-      },
+      rules: {},
     },
   ],
   globals: {},

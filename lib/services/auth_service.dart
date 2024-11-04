@@ -14,13 +14,16 @@ import 'firebase_service.dart';
 class AuthService {
   static final AuthService _instance = AuthService._internal();
   factory AuthService() => _instance;
+
   AuthService._internal() {
     _logEnvironmentVariables();
   }
 
   void _logEnvironmentVariables() {
     final functionUrl = dotenv.env['FIREBASE_FUNCTION_URL'];
+    final googleApiKey = dotenv.env['GOOGLE_API_KEY'];
     Logger.log("현재 Function URL 설정: $functionUrl");
+    Logger.log("현재 Google API Key 설정: $googleApiKey");
   }
 
   final firebase.FirebaseAuth _firebaseAuth = firebase.FirebaseAuth.instance;

@@ -6,6 +6,8 @@ import 'package:kakao_flutter_sdk_common/kakao_flutter_sdk_common.dart'
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 
+import 'firebase/config/firebase_config.dart';
+import 'firebase_options.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/report/report_screen.dart';
 import 'screens/community/community_screen.dart';
@@ -14,7 +16,6 @@ import 'screens/onboarding/onboarding_screen.dart';
 import 'widgets/custom_drawer.dart';
 import 'providers/user_provider.dart';
 import 'utils/global_keys.dart';
-import 'firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,41 +24,29 @@ Future<void> main() async {
     await dotenv.load(fileName: ".env");
     Logger.log("✅ .env 파일을 성공적으로 로드했습니다.");
 
-    final functionUrl = dotenv.env['FIREBASE_FUNCTION_URL'];
-    final kakaoNativeKey = dotenv.env['KAKAO_NATIVE_APP_KEY'];
-    final googleApiKey = dotenv.env['GOOGLE_API_KEY']; // Google API 키 추가
+    // Kakao SDK 초기화
+    kakao_sdk.KakaoSdk.init(
+      nativeAppKey: dotenv.env['KAKAO_NATIVE_APP_KEY'],
+      javaScriptAppKey: dotenv.env['JAVASCRIPT_APP_KEY'] ?? '',
+    );
 
-    Logger.log("Function URL: $functionUrl");
-    Logger.log("Kakao Native Key: $kakaoNativeKey");
-    Logger.log("Google API Key: $googleApiKey"); // Google API 키 로깅
+    // Firebase 초기화
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
 
-    if (functionUrl == null || functionUrl.isEmpty) {
-      throw Exception('FIREBASE_FUNCTION_URL이 설정되지 않았습니다.');
-    }
-    if (googleApiKey == null || googleApiKey.isEmpty) {
-      throw Exception('GOOGLE_API_KEY가 설정되지 않았습니다.');
-    }
+    runApp(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<UserProvider>(create: (_) => UserProvider()),
+        ],
+        child: const MyApp(),
+      ),
+    );
   } catch (e) {
-    Logger.log("❌ .env 파일 또는 환경변수 로드 실패: $e");
+    Logger.log("❌ 초기화 실패: $e");
+    rethrow;
   }
-
-  kakao_sdk.KakaoSdk.init(
-    nativeAppKey: dotenv.env['KAKAO_NATIVE_APP_KEY'] ?? '',
-    javaScriptAppKey: dotenv.env['JAVASCRIPT_APP_KEY'] ?? '',
-  );
-
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider<UserProvider>(create: (_) => UserProvider()),
-      ],
-      child: const MyApp(),
-    ),
-  );
 }
 
 class MyApp extends StatelessWidget {
