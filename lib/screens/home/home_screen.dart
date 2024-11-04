@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/user_provider.dart';
 import '../../utils/logger.dart';
+import '../../widgets/loading_indicator.dart'; // Import the LoadingIndicator
 import 'components/home_components.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -50,9 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
       body: Consumer<UserProvider>(
         builder: (context, userProvider, child) {
           if (!_isInitialized || userProvider.isLoading) {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
+            return const LoadingIndicator(); // Use your custom LoadingIndicator here
           }
 
           // 사용자가 없는 경우

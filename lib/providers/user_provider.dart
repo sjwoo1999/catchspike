@@ -23,11 +23,10 @@ class UserProvider extends ChangeNotifier {
       } else {
         Logger.log('사용자 정보 없음');
       }
-      notifyListeners();
     } catch (e) {
       Logger.log('사용자 정보 초기화 실패: $e');
     } finally {
-      setLoading(false);
+      setLoading(false); // Make sure to set loading to false here.
     }
   }
 

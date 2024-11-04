@@ -5,6 +5,7 @@ import 'package:kakao_flutter_sdk_common/kakao_flutter_sdk_common.dart'
     as kakao_sdk;
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'widgets/loading_indicator.dart';
 
 import 'firebase/config/firebase_config.dart';
 import 'firebase_options.dart';
@@ -63,37 +64,31 @@ class MyApp extends StatelessWidget {
           backgroundColor: Color(0xFFE30547),
           foregroundColor: Colors.white,
           elevation: 0,
-          titleTextStyle: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w500,
-            fontFamily: 'GmarketSans',
-          ),
         ),
       ),
       routes: {
-        "/": (context) => Consumer<UserProvider>(
+        "/home": (context) => const MainScreen(), // Add this route
+      },
+      home: FutureBuilder(
+        future: Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform,
+        ),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.done) {
+            return Consumer<UserProvider>(
               builder: (context, userProvider, child) {
-                userProvider.addListener(() {
-                  Logger.log('UserProvider 상태 변경됨');
-                  Logger.log('현재 사용자: ${userProvider.user?.id}');
-                });
-
-                return userProvider.user == null
-                    ? OnboardingScreen()
-                    : const MainScreen();
+                // Check user state
+                if (userProvider.user == null) {
+                  // If user is not logged in, redirect to onboarding
+                  return OnboardingScreen();
+                }
+                return const MainScreen(); // Navigate to main screen if logged in
               },
-            ),
-        "/home": (context) => const MainScreen(), // "/home" 경로 추가
-      },
-      onGenerateRoute: (settings) {
-        if (settings.name == '/') {
-          final int? index = settings.arguments as int?;
-          return MaterialPageRoute(
-            builder: (context) => MainScreen(initialIndex: index),
-          );
-        }
-        return null;
-      },
+            );
+          }
+          return const LoadingIndicator(); // Show loading UI while waiting for Firebase initialization
+        },
+      ),
       debugShowCheckedModeBanner: false,
       scaffoldMessengerKey: scaffoldMessengerKey,
     );
