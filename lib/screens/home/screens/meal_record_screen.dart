@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:catchspike/services/firebase_service.dart';
+import 'package:catchspike/models/meal_record.dart';
 import 'dart:io';
 
 class MealRecordScreen extends StatefulWidget {
@@ -13,6 +16,8 @@ class _MealRecordScreenState extends State<MealRecordScreen> {
   String _selectedTime = '';
   File? _selectedImage;
   final ImagePicker _picker = ImagePicker();
+  bool _isLoading = false;
+  final FirebaseService _firebaseService = FirebaseService();
 
   String _getFormattedDate() {
     final now = DateTime.now();
@@ -24,7 +29,8 @@ class _MealRecordScreenState extends State<MealRecordScreen> {
     return days[weekday - 1];
   }
 
-  void _navigateToTab(BuildContext context, int index) {
+  Future<void> _navigateToTab(BuildContext context, int index) async {
+    if (!mounted) return;
     Navigator.pop(context);
     Navigator.pushNamedAndRemoveUntil(
       context,
@@ -42,101 +48,157 @@ class _MealRecordScreenState extends State<MealRecordScreen> {
         maxHeight: 1800,
         imageQuality: 85,
       );
-      if (image != null) {
+      if (image != null && mounted) {
         setState(() {
           _selectedImage = File(image.path);
         });
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('이미지를 불러오는데 실패했습니다. 다시 시도해주세요.'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (!mounted) return;
+      _showErrorSnackBar('이미지를 불러오는데 실패했습니다. 다시 시도해주세요.');
     }
   }
 
-  Future<void> _showImagePickerBottomSheet(BuildContext context) async {
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+
+  Future<void> _showImagePickerBottomSheet() async {
+    if (!mounted) return;
     await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (BuildContext context) {
-        return Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(20),
-              topRight: Radius.circular(20),
+      builder: (BuildContext context) => _buildImagePickerBottomSheet(),
+    );
+  }
+
+  Widget _buildImagePickerBottomSheet() {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            margin: const EdgeInsets.only(top: 8),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(2),
             ),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                margin: const EdgeInsets.only(top: 8),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 20),
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE30547).withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.camera_alt,
-                    color: Color(0xFFE30547),
-                  ),
-                ),
-                title: const Text(
-                  '카메라로 촬영하기',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickImage(ImageSource.camera);
-                },
-              ),
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE30547).withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.photo_library,
-                    color: Color(0xFFE30547),
-                  ),
-                ),
-                title: const Text(
-                  '갤러리에서 선택하기',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickImage(ImageSource.gallery);
-                },
-              ),
-              const SizedBox(height: 30),
-            ],
+          const SizedBox(height: 20),
+          _buildPickerOption(
+            icon: Icons.camera_alt,
+            title: '카메라로 촬영하기',
+            onTap: () {
+              Navigator.pop(context);
+              _pickImage(ImageSource.camera);
+            },
           ),
-        );
-      },
+          _buildPickerOption(
+            icon: Icons.photo_library,
+            title: '갤러리에서 선택하기',
+            onTap: () {
+              Navigator.pop(context);
+              _pickImage(ImageSource.gallery);
+            },
+          ),
+          const SizedBox(height: 30),
+        ],
+      ),
     );
+  }
+
+  Widget _buildPickerOption({
+    required IconData icon,
+    required String title,
+    required VoidCallback onTap,
+  }) {
+    return ListTile(
+      leading: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFE30547).withOpacity(0.1),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(
+          icon,
+          color: const Color(0xFFE30547),
+        ),
+      ),
+      title: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+      onTap: onTap,
+    );
+  }
+
+  Future<void> _analyzeMealAndSave() async {
+    if (_selectedImage == null || _selectedTime.isEmpty) {
+      if (!mounted) return;
+      _showErrorSnackBar('이미지와 식사 시간을 모두 선택해주세요');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('로그인이 필요합니다');
+
+      final imageUrl =
+          await _firebaseService.uploadMealImage(_selectedImage!, user.uid);
+      final mealRecord = MealRecord(
+        userId: user.uid,
+        imageUrl: imageUrl,
+        mealType: _selectedTime,
+        timestamp: DateTime.now(),
+      );
+
+      await _firebaseService.saveMealRecord(mealRecord);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('식사가 성공적으로 기록되었습니다'),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        '/',
+        (route) => false,
+        arguments: 0,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _showErrorSnackBar('오류가 발생했습니다: ${e.toString()}');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   Widget _buildTimeButton(String label, IconData icon, String value) {
@@ -169,7 +231,7 @@ class _MealRecordScreenState extends State<MealRecordScreen> {
             Icon(
               icon,
               size: 24,
-              color: isSelected ? _getSelectedColor(value) : Colors.grey,
+              color: isSelected ? Colors.black : Colors.grey,
             ),
             const SizedBox(height: 4),
             Text(
@@ -185,73 +247,65 @@ class _MealRecordScreenState extends State<MealRecordScreen> {
     );
   }
 
-  Color _getSelectedColor(String value) {
-    switch (value) {
-      case 'breakfast':
-        return Colors.orange;
-      case 'lunch':
-        return Colors.yellow;
-      case 'dinner':
-        return Colors.purple;
-      case 'snack':
-        return const Color(0xFFE30547);
-      default:
-        return Colors.grey;
-    }
-  }
-
   Widget _buildImageContent() {
     if (_selectedImage == null) {
-      return Column(
-        children: [
-          Container(
-            width: 80,
-            height: 80,
-            decoration: const BoxDecoration(
-              color: Color(0xFFFFE7EB),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.camera_alt,
-              color: Color(0xFFE30547),
-              size: 40,
-            ),
+      return _buildEmptyImageContent();
+    }
+    return _buildSelectedImageContent();
+  }
+
+  Widget _buildEmptyImageContent() {
+    return Column(
+      children: [
+        Container(
+          width: 80,
+          height: 80,
+          decoration: const BoxDecoration(
+            color: Color(0xFFFFE7EB),
+            shape: BoxShape.circle,
           ),
-          const SizedBox(height: 16),
-          const Text(
-            '카메라로 모든 음식이\n보이게 찍어주세요',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w500,
-              height: 1.3,
-            ),
+          child: const Icon(
+            Icons.camera_alt,
+            color: Color(0xFFE30547),
+            size: 40,
           ),
-          const SizedBox(height: 16),
-          GestureDetector(
-            onTap: () => _showImagePickerBottomSheet(context),
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 20),
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Center(
-                child: Text(
-                  '여기를 눌러 사진을 찍어주세요',
-                  style: TextStyle(
-                    color: Colors.grey,
-                    fontSize: 16,
-                  ),
+        ),
+        const SizedBox(height: 16),
+        const Text(
+          '카메라로 모든 음식이\n보이게 찍어주세요',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w500,
+            height: 1.3,
+          ),
+        ),
+        const SizedBox(height: 16),
+        GestureDetector(
+          onTap: _showImagePickerBottomSheet,
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            decoration: BoxDecoration(
+              color: Colors.grey[100],
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Center(
+              child: Text(
+                '여기를 눌러 사진을 찍어주세요',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontSize: 16,
                 ),
               ),
             ),
           ),
-        ],
-      );
-    }
+        ),
+      ],
+    );
+  }
 
+  Widget _buildSelectedImageContent() {
     return Column(
       children: [
         Container(
@@ -283,7 +337,7 @@ class _MealRecordScreenState extends State<MealRecordScreen> {
                 top: 8,
                 right: 8,
                 child: GestureDetector(
-                  onTap: () => _showImagePickerBottomSheet(context),
+                  onTap: _showImagePickerBottomSheet,
                   child: Container(
                     padding: const EdgeInsets.all(8),
                     decoration: const BoxDecoration(
@@ -305,18 +359,7 @@ class _MealRecordScreenState extends State<MealRecordScreen> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: ElevatedButton(
-            onPressed: () {
-              if (_selectedTime.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('식사 시간을 선택해주세요'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-                return;
-              }
-              // 여기에 분석 로직 추가
-            },
+            onPressed: _isLoading ? null : _analyzeMealAndSave,
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFE30547),
               foregroundColor: Colors.white,
@@ -327,13 +370,22 @@ class _MealRecordScreenState extends State<MealRecordScreen> {
               elevation: 0,
               minimumSize: const Size(double.infinity, 0),
             ),
-            child: const Text(
-              '식단 분석하기',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            child: _isLoading
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  )
+                : const Text(
+                    '식단 분석하기',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
           ),
         ),
       ],

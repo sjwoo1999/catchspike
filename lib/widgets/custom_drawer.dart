@@ -1,30 +1,30 @@
-// lib/widgets/custom_drawer.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
+import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart' as kakao;
 import '../providers/user_provider.dart';
 import '../utils/global_keys.dart';
 import '../services/auth_service.dart';
+import '../models/users.dart' as app_user;
+import '../models/user_details.dart';
 
-class CustomDrawer extends StatelessWidget {
+class CustomDrawer extends StatefulWidget {
   const CustomDrawer({super.key});
 
+  @override
+  CustomDrawerState createState() => CustomDrawerState();
+}
+
+class CustomDrawerState extends State<CustomDrawer> {
   @override
   Widget build(BuildContext context) {
     return Drawer(
       child: Consumer<UserProvider>(
         builder: (context, userProvider, child) {
-          print('CustomDrawer rebuild');
-          print('Provider에서 받은 user: ${userProvider.user?.id}');
-
           final bool isLoggedIn = userProvider.user != null;
-          print('isLoggedIn: $isLoggedIn');
 
           if (isLoggedIn) {
-            print('로그인된 상태 - 유저 ID: ${userProvider.user?.id}');
             return const LoggedInMenuContent();
           } else {
-            print('로그아웃된 상태');
             return const LoggedOutMenuContent();
           }
         },
@@ -33,15 +33,14 @@ class CustomDrawer extends StatelessWidget {
   }
 }
 
-// 로그인된 상태의 메뉴 내용
 class LoggedInMenuContent extends StatefulWidget {
   const LoggedInMenuContent({super.key});
 
   @override
-  _LoggedInMenuContentState createState() => _LoggedInMenuContentState();
+  LoggedInMenuContentState createState() => LoggedInMenuContentState();
 }
 
-class _LoggedInMenuContentState extends State<LoggedInMenuContent> {
+class LoggedInMenuContentState extends State<LoggedInMenuContent> {
   late final UserProvider _userProvider;
 
   @override
@@ -52,22 +51,19 @@ class _LoggedInMenuContentState extends State<LoggedInMenuContent> {
 
   Future<void> _logout() async {
     try {
-      // 드로어를 먼저 닫기
       Navigator.pop(context);
 
-      await UserApi.instance.logout();
+      await kakao.UserApi.instance.logout();
 
       if (!mounted) return;
       _userProvider.clearUser();
 
-      print('로그아웃 성공');
+      if (!mounted) return;
       scaffoldMessengerKey.currentState?.showSnackBar(
         const SnackBar(content: Text('로그아웃 성공')),
       );
     } catch (e) {
-      print('로그아웃 실패 $e');
       if (!mounted) return;
-
       scaffoldMessengerKey.currentState?.showSnackBar(
         SnackBar(content: Text('로그아웃 실패: $e')),
       );
@@ -76,18 +72,22 @@ class _LoggedInMenuContentState extends State<LoggedInMenuContent> {
 
   @override
   Widget build(BuildContext context) {
-    final User? user = _userProvider.user;
+    final app_user.User? user = _userProvider.user;
+    final bool isLoading = _userProvider.isLoading;
 
-    final String userName = user?.kakaoAccount?.profile?.nickname ?? '사용자 이름';
-    final String userEmail = user?.kakaoAccount?.email ?? 'user@example.com';
+    if (isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final String userName = user?.name ?? '사용자 이름';
+    final String userEmail = user?.email ?? 'user@example.com';
     final String profileImageUrl =
-        user?.kakaoAccount?.profile?.profileImageUrl ??
-            'assets/images/default_profile.png';
+        user?.profileImageUrl ?? 'assets/images/default_profile.png';
 
     return ListView(
       children: [
         Container(
-          color: const Color(0xFFE30547), // #E30547 색상으로 변경
+          color: const Color(0xFFE30547),
           padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 16),
           child: Row(
             children: [
@@ -108,7 +108,7 @@ class _LoggedInMenuContentState extends State<LoggedInMenuContent> {
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 22,
-                        fontWeight: FontWeight.w500, // 글자 굵기 조정
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -117,7 +117,7 @@ class _LoggedInMenuContentState extends State<LoggedInMenuContent> {
                       style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 12,
-                        fontWeight: FontWeight.normal, // 기본 굵기
+                        fontWeight: FontWeight.normal,
                       ),
                     ),
                   ],
@@ -126,13 +126,12 @@ class _LoggedInMenuContentState extends State<LoggedInMenuContent> {
             ],
           ),
         ),
-        // 메뉴 항목들
         ListTile(
           leading: const Icon(Icons.account_circle),
           title: const Text('나의 계정'),
           onTap: () {
             Navigator.pop(context);
-            // 실제 페이지로 이동하는 코드 추가
+            // TODO: 계정 페이지로 이동
           },
         ),
         ListTile(
@@ -140,7 +139,7 @@ class _LoggedInMenuContentState extends State<LoggedInMenuContent> {
           title: const Text('마이페이지'),
           onTap: () {
             Navigator.pop(context);
-            // 실제 페이지로 이동하는 코드 추가
+            // TODO: 마이페이지로 이동
           },
         ),
         ListTile(
@@ -153,16 +152,16 @@ class _LoggedInMenuContentState extends State<LoggedInMenuContent> {
   }
 }
 
-// 로그인되지 않은 상태의 메뉴 내용
 class LoggedOutMenuContent extends StatefulWidget {
   const LoggedOutMenuContent({super.key});
 
   @override
-  _LoggedOutMenuContentState createState() => _LoggedOutMenuContentState();
+  State<LoggedOutMenuContent> createState() => LoggedOutMenuContentState();
 }
 
-class _LoggedOutMenuContentState extends State<LoggedOutMenuContent> {
+class LoggedOutMenuContentState extends State<LoggedOutMenuContent> {
   bool _isLoading = false;
+  final AuthService _authService = AuthService();
 
   Future<void> _loginWithKakao() async {
     if (_isLoading) return;
@@ -172,15 +171,24 @@ class _LoggedOutMenuContentState extends State<LoggedOutMenuContent> {
     });
 
     try {
-      final user = await AuthService().loginWithKakao();
+      final kakaoUser = await kakao.UserApi.instance.me();
+      final userDetails = UserDetails(
+        uid: kakaoUser.id.toString(),
+        displayName:
+            kakaoUser.kakaoAccount?.profile?.nickname ?? 'Unknown User',
+        email: kakaoUser.kakaoAccount?.email ?? 'unknown@example.com',
+        photoURL: kakaoUser.kakaoAccount?.profile?.profileImageUrl ?? '',
+      );
 
-      if (user != null) {
-        if (!mounted) return;
+      final app_user.User? appUser =
+          await _authService.loginWithKakao(userDetails);
 
-        // Provider를 통한 상태 업데이트
-        Provider.of<UserProvider>(context, listen: false).setUser(user);
+      if (!mounted) return;
 
-        if (!mounted) return;
+      if (appUser != null) {
+        await Provider.of<UserProvider>(context, listen: false)
+            .setUser(appUser);
+
         Navigator.pop(context);
 
         scaffoldMessengerKey.currentState?.showSnackBar(
@@ -188,9 +196,7 @@ class _LoggedOutMenuContentState extends State<LoggedOutMenuContent> {
         );
       }
     } catch (e) {
-      print('로그인 처리 중 에러: $e');
       if (!mounted) return;
-
       scaffoldMessengerKey.currentState?.showSnackBar(
         SnackBar(content: Text('로그인 실패: $e')),
       );
@@ -239,7 +245,9 @@ class _LoggedOutMenuContentState extends State<LoggedOutMenuContent> {
               GestureDetector(
                 onTap: _isLoading ? null : _loginWithKakao,
                 child: _isLoading
-                    ? const CircularProgressIndicator()
+                    ? const CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      )
                     : Image.asset(
                         'assets/images/kakao_login_medium_narrow.png',
                         fit: BoxFit.contain,

@@ -1,7 +1,10 @@
+import 'package:catchspike/utils/logger.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:kakao_flutter_sdk_common/kakao_flutter_sdk_common.dart';
+import 'package:kakao_flutter_sdk_common/kakao_flutter_sdk_common.dart'
+    as kakao_sdk;
 import 'package:provider/provider.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 import 'screens/home/home_screen.dart';
 import 'screens/report/report_screen.dart';
@@ -9,23 +12,36 @@ import 'screens/community/community_screen.dart';
 import 'screens/achievement/achievement_screen.dart';
 import 'screens/onboarding/onboarding_screen.dart';
 import 'widgets/custom_drawer.dart';
-import 'utils/theme.dart';
 import 'providers/user_provider.dart';
 import 'utils/global_keys.dart';
+import 'firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
     await dotenv.load(fileName: ".env");
-    print("✅ .env 파일을 성공적으로 로드했습니다.");
+    Logger.log("✅ .env 파일을 성공적으로 로드했습니다.");
+
+    final functionUrl = dotenv.env['FIREBASE_FUNCTION_URL'];
+    final kakaoNativeKey = dotenv.env['KAKAO_NATIVE_APP_KEY'];
+    Logger.log("Function URL: $functionUrl");
+    Logger.log("Kakao Native Key: $kakaoNativeKey");
+
+    if (functionUrl == null || functionUrl.isEmpty) {
+      throw Exception('FIREBASE_FUNCTION_URL이 설정되지 않았습니다.');
+    }
   } catch (e) {
-    print("❌ .env 파일 로드 실패: $e");
+    Logger.log("❌ .env 파일 또는 환경변수 로드 실패: $e");
   }
 
-  KakaoSdk.init(
+  kakao_sdk.KakaoSdk.init(
     nativeAppKey: dotenv.env['KAKAO_NATIVE_APP_KEY'] ?? '',
     javaScriptAppKey: dotenv.env['JAVASCRIPT_APP_KEY'] ?? '',
+  );
+
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
   );
 
   runApp(
@@ -59,6 +75,21 @@ class MyApp extends StatelessWidget {
           ),
         ),
       ),
+      routes: {
+        "/": (context) => Consumer<UserProvider>(
+              builder: (context, userProvider, child) {
+                userProvider.addListener(() {
+                  Logger.log('UserProvider 상태 변경됨');
+                  Logger.log('현재 사용자: ${userProvider.user?.id}');
+                });
+
+                return userProvider.user == null
+                    ? OnboardingScreen()
+                    : const MainScreen();
+              },
+            ),
+        "/home": (context) => const MainScreen(), // "/home" 경로 추가
+      },
       onGenerateRoute: (settings) {
         if (settings.name == '/') {
           final int? index = settings.arguments as int?;
@@ -68,20 +99,6 @@ class MyApp extends StatelessWidget {
         }
         return null;
       },
-      home: Consumer<UserProvider>(
-        builder: (context, userProvider, child) {
-          // UserProvider 상태 변경 리스너
-          userProvider.addListener(() {
-            print('UserProvider 상태 변경됨');
-            print('현재 사용자: ${userProvider.user?.id}');
-          });
-
-          // 로그인 상태에 따라 화면 분기
-          return userProvider.user == null
-              ? const OnboardingScreen()
-              : const MainScreen();
-        },
-      ),
       debugShowCheckedModeBanner: false,
       scaffoldMessengerKey: scaffoldMessengerKey,
     );
@@ -107,9 +124,9 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   final List<Widget> _screens = [
-    HomeScreen(),
-    ReportScreen(),
-    CommunityScreen(),
+    const HomeScreen(),
+    const ReportScreen(),
+    const CommunityScreen(),
     AchievementsScreen(),
   ];
 
@@ -174,7 +191,25 @@ class _MainScreenState extends State<MainScreen> {
           showUnselectedLabels: true,
           selectedFontSize: 12,
           unselectedFontSize: 12,
-          onTap: (index) => setState(() => _selectedIndex = index),
+          onTap: (index) {
+            setState(() {
+              _selectedIndex = index;
+              switch (index) {
+                case 0:
+                  Navigator.pushNamed(context, '/home');
+                  break;
+                case 1:
+                  Navigator.pushNamed(context, '/report');
+                  break;
+                case 2:
+                  Navigator.pushNamed(context, '/community');
+                  break;
+                case 3:
+                  Navigator.pushNamed(context, '/achievement');
+                  break;
+              }
+            });
+          },
         ),
       ),
     );

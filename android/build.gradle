@@ -3,6 +3,9 @@ allprojects {
         google()
         mavenCentral()
     }
+    defaultConfig {
+        minSdkVersion 21
+    }
 }
 
 rootProject.buildDir = "../build"

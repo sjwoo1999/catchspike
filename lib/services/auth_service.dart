@@ -1,60 +1,188 @@
-// lib/services/auth_service.dart
-import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
+import 'package:flutter/material.dart';
+import 'package:catchspike/models/users.dart' as app_user;
+import 'package:catchspike/providers/user_provider.dart';
+import 'package:catchspike/utils/logger.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase;
+import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart' as kakao;
+import 'package:provider/provider.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../models/user_details.dart';
+import 'firebase_service.dart';
 
 class AuthService {
   static final AuthService _instance = AuthService._internal();
   factory AuthService() => _instance;
-  AuthService._internal();
+  AuthService._internal() {
+    _logEnvironmentVariables();
+  }
 
-  Future<User?> loginWithKakao() async {
+  void _logEnvironmentVariables() {
+    final functionUrl = dotenv.env['FIREBASE_FUNCTION_URL'];
+    Logger.log("현재 Function URL 설정: $functionUrl");
+  }
+
+  final firebase.FirebaseAuth _firebaseAuth = firebase.FirebaseAuth.instance;
+  final FirebaseService _firebaseService = FirebaseService();
+
+  // Kakao 로그인 및 Firebase 인증 함수
+  Future<app_user.User?> loginWithKakao(UserDetails userDetails) async {
     try {
-      print('카카오 로그인 시작');
-      bool isInstalled = await isKakaoTalkInstalled();
-      OAuthToken token;
+      // Firebase 커스텀 토큰 획득
+      final customToken = await getFirebaseCustomToken(
+        userDetails.uid,
+        userDetails.email ?? '', // 빈 문자열 제공
+        userDetails.displayName,
+        userDetails.photoURL ?? '', // 빈 문자열 제공
+      );
+      Logger.log("Firebase 커스텀 토큰 획득 성공");
 
-      if (isInstalled) {
-        print('카카오톡으로 로그인 시도');
-        token = await UserApi.instance.loginWithKakaoTalk();
+      // Firebase 인증
+      final userCredential =
+          await _firebaseAuth.signInWithCustomToken(customToken);
 
-        // 사용자 정보 가져오기
-        User user = await UserApi.instance.me();
+      if (userCredential.user != null) {
+        // 앱의 사용자 모델 생성
+        final user = app_user.User(
+          id: userCredential.user!.uid,
+          name: userDetails.displayName,
+          email: userDetails.email, // nullable
+          kakaoId: userDetails.uid,
+          profileImageUrl: userDetails.photoURL, // nullable
+          lastLoginAt: DateTime.now(),
+        );
 
-        // 이메일 정보가 없다면 추가 동의 요청
-        if (user.kakaoAccount?.email == null) {
-          print('이메일 정보 추가 동의 요청');
-          await UserApi.instance.loginWithNewScopes(['account_email']);
-          // 사용자 정보 다시 조회
-          user = await UserApi.instance.me();
-        }
-
-        return user;
-      } else {
-        print('카카오 계정으로 로그인 시도');
-        // 웹 로그인은 한 번에 모든 동의 항목 요청
-        token = await UserApi.instance.loginWithKakaoAccount();
-
-        // 사용자 정보 조회
-        User user = await UserApi.instance.me();
-
-        // 이메일 정보가 없다면 추가 동의 요청
-        if (user.kakaoAccount?.email == null) {
-          print('이메일 정보 추가 동의 요청');
-          await UserApi.instance.loginWithNewScopes(['account_email']);
-          // 사용자 정보 다시 조회
-          user = await UserApi.instance.me();
-        }
-
-        print('토큰 발급 성공: ${token.accessToken}');
-        print('사용자 정보 가져오기 성공: ${user.id}');
-        print('이메일: ${user.kakaoAccount?.email}');
-        print('닉네임: ${user.kakaoAccount?.profile?.nickname}');
-        print('프로필 이미지: ${user.kakaoAccount?.profile?.profileImageUrl}');
+        await _firebaseService.saveUser(user);
+        Logger.log("사용자 정보 Firebase 저장 성공: ${user.id}");
 
         return user;
       }
-    } catch (e) {
-      print('로그인 실패 상세 에러: $e');
+
+      Logger.log("Firebase 사용자 생성 실패");
       return null;
+    } catch (e) {
+      Logger.log("로그인 프로세스 실패: $e");
+      rethrow;
+    }
+  }
+
+  // Firebase 커스텀 토큰 생성 함수
+  Future<String> getFirebaseCustomToken(
+      String id, String email, String nickname, String profileImageUrl) async {
+    try {
+      final functionUrl = dotenv.env['FIREBASE_FUNCTION_URL'];
+      Logger.log("Function URL 확인: $functionUrl");
+
+      if (functionUrl == null || functionUrl.isEmpty) {
+        throw Exception('Function URL이 설정되지 않았습니다. (.env 파일을 확인해주세요)');
+      }
+
+      final url = Uri.parse(functionUrl);
+      Logger.log("토큰 요청 URL: $url");
+
+      final requestBody = {
+        "id": id,
+        "email": email,
+        "nickname": nickname,
+        "profileImageUrl": profileImageUrl,
+      };
+
+      Logger.log("요청 데이터: ${json.encode(requestBody)}");
+
+      final response = await http
+          .post(
+        url,
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+        },
+        body: json.encode(requestBody),
+      )
+          .timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('토큰 요청 시간이 초과되었습니다.');
+        },
+      );
+
+      Logger.log("토큰 요청 응답 상태 코드: ${response.statusCode}");
+      Logger.log("토큰 요청 응답 본문: ${response.body}");
+
+      if (response.statusCode == 200) {
+        try {
+          final data = json.decode(response.body);
+          if (data['token'] != null) {
+            return data['token'];
+          }
+          throw Exception('응답에 토큰이 없습니다: ${response.body}');
+        } catch (e) {
+          Logger.log("JSON 파싱 실패: $e");
+          throw Exception('응답 데이터 처리 중 오류가 발생했습니다.');
+        }
+      }
+
+      final errorMessage = _getErrorMessage(response.statusCode, response.body);
+      throw Exception(errorMessage);
+    } catch (e) {
+      Logger.log("Firebase 커스텀 토큰 생성 실패: $e");
+      rethrow;
+    }
+  }
+
+  String _getErrorMessage(int statusCode, String responseBody) {
+    switch (statusCode) {
+      case 400:
+        return '잘못된 요청입니다. 요청 데이터를 확인해주세요: $responseBody';
+      case 401:
+        return '인증되지 않은 요청입니다. 인증 설정을 확인해주세요.';
+      case 404:
+        return '요청한 Function을 찾을 수 없습니다. URL과 배포 상태를 확인해주세요.';
+      case 429:
+        return '너무 많은 요청이 발생했습니다. 잠시 후 다시 시도해주세요.';
+      case 500:
+        return '서버 내부 오류가 발생했습니다. 관리자에게 문의해주세요.';
+      default:
+        return '알 수 없는 오류가 발생했습니다. (상태 코드: $statusCode, 응답: $responseBody)';
+    }
+  }
+
+  Future<void> signOut(BuildContext context) async {
+    if (!context.mounted) return;
+
+    try {
+      await _firebaseAuth.signOut();
+      Logger.log("Firebase 로그아웃 성공");
+
+      if (await kakao.AuthApi.instance.hasToken()) {
+        await kakao.UserApi.instance.unlink();
+        Logger.log("카카오 연동 해제 성공");
+      }
+
+      if (context.mounted) {
+        Provider.of<UserProvider>(context, listen: false).clearUser();
+        Logger.log("로그아웃 프로세스 완료");
+      }
+    } catch (e) {
+      Logger.log("로그아웃 실패: $e");
+      rethrow;
+    }
+  }
+
+  bool isLoggedIn() {
+    return _firebaseAuth.currentUser != null;
+  }
+
+  firebase.User? getCurrentUser() {
+    return _firebaseAuth.currentUser;
+  }
+
+  Future<bool> isKakaoLoggedIn() async {
+    try {
+      return await kakao.AuthApi.instance.hasToken();
+    } catch (e) {
+      Logger.log("카카오 로그인 상태 확인 실패: $e");
+      return false;
     }
   }
 }

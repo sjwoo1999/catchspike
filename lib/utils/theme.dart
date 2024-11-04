@@ -8,7 +8,7 @@ class AppTheme {
       colorScheme: ColorScheme.fromSeed(
         seedColor: const Color(AppConstants.primaryColor),
       ).copyWith(
-        background: Colors.white,
+        surface: Colors.white,
       ),
       appBarTheme: const AppBarTheme(
         backgroundColor: Color(AppConstants.primaryColor),

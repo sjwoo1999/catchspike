@@ -11,12 +11,12 @@ class CalorieDetailsScreen extends StatelessWidget {
         backgroundColor: const Color(0xFFE30547),
         foregroundColor: Colors.white,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+      body: const SingleChildScrollView(
+        padding: EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               '일일 칼로리 섭취',
               style: TextStyle(
                 fontFamily: 'Pretendard',
@@ -25,7 +25,7 @@ class CalorieDetailsScreen extends StatelessWidget {
                 letterSpacing: -0.3,
               ),
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: 16),
             // 칼로리 세부 정보를 보여주는 위젯들 추가 예정
           ],
         ),

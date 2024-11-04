@@ -53,7 +53,7 @@ class ReportScreen extends StatelessWidget {
 
             // 오늘의 식사 기록
             MealHistoryCard(
-              meals: [
+              meals: const [
                 Meal(
                   time: '아침',
                   menu: '샐러드와 닭가슴살',
@@ -73,7 +73,7 @@ class ReportScreen extends StatelessWidget {
 
             // 건강 인사이트
             HealthInsightCard(
-              insights: [
+              insights: const [
                 '오늘은 목표 칼로리의 60%를 섭취했어요',
                 '점심 식사 시간이 평소보다 10분 더 길었어요',
                 '단백질 섭취가 부족해요',

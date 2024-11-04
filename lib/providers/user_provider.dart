@@ -1,62 +1,66 @@
 // lib/providers/user_provider.dart
 import 'package:flutter/material.dart';
-import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
+import '../models/users.dart';
+import '../services/firebase_service.dart';
+import '../utils/logger.dart';
 
-class UserProvider with ChangeNotifier {
+class UserProvider extends ChangeNotifier {
   User? _user;
   bool _isLoading = false;
+  final FirebaseService _firebaseService = FirebaseService();
 
   User? get user => _user;
   bool get isLoading => _isLoading;
 
-  // 로딩 상태 설정
-  void _setLoading(bool loading) {
-    _isLoading = loading;
-    notifyListeners();
-  }
-
-  void setUser(User newUser) {
-    print('UserProvider setUser 호출됨');
-    print('이전 사용자: ${_user?.id}');
-    print('새로운 사용자: ${newUser.id}');
-
-    _user = newUser;
-    notifyListeners();
-
-    print('UserProvider setUser 완료');
-    print('현재 사용자: ${_user?.id}');
-
-    // 사용자 정보 로그
-    print('사용자 닉네임: ${_user?.kakaoAccount?.profile?.nickname}');
-    print('사용자 이메일: ${_user?.kakaoAccount?.email}');
-    print('프로필 이미지: ${_user?.kakaoAccount?.profile?.profileImageUrl}');
-  }
-
-  void clearUser() {
-    print('UserProvider clearUser 호출됨');
-    _user = null;
-    notifyListeners();
-    print('UserProvider clearUser 완료');
-  }
-
-  // 사용자 정보 초기화 (앱 시작시 호출)
   Future<void> initializeUser() async {
-    _setLoading(true);
     try {
-      if (await AuthApi.instance.hasToken()) {
-        try {
-          // 기존 토큰으로 사용자 정보 가져오기
-          User user = await UserApi.instance.me();
-          setUser(user);
-        } catch (e) {
-          print('토큰은 있지만 사용자 정보 가져오기 실패: $e');
-          clearUser();
-        }
+      setLoading(true);
+      final currentUser = await _firebaseService.getCurrentUser();
+
+      if (currentUser != null) {
+        _user = currentUser;
+        Logger.log('사용자 정보 초기화 성공: ${currentUser.id}');
+      } else {
+        Logger.log('사용자 정보 없음');
       }
+      notifyListeners();
     } catch (e) {
-      print('사용자 초기화 중 에러: $e');
+      Logger.log('사용자 정보 초기화 실패: $e');
     } finally {
-      _setLoading(false);
+      setLoading(false);
+    }
+  }
+
+  Future<void> setUser(User user) async {
+    try {
+      setLoading(true);
+      await _firebaseService.saveUser(user);
+      _user = user;
+      Logger.log('사용자 정보 업데이트 성공: ${user.id}');
+      notifyListeners();
+    } catch (e) {
+      Logger.log('사용자 정보 업데이트 실패: $e');
+      rethrow;
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  void setLoading(bool loading) {
+    if (_isLoading != loading) {
+      _isLoading = loading;
+      notifyListeners();
+    }
+  }
+
+  Future<void> clearUser() async {
+    try {
+      _user = null;
+      Logger.log('사용자 정보 초기화 완료');
+      notifyListeners();
+    } catch (e) {
+      Logger.log('사용자 정보 초기화 실패: $e');
+      rethrow;
     }
   }
 }

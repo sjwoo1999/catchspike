@@ -59,7 +59,7 @@ class HealthColumnTab extends StatelessWidget {
           author: '김영양 의사',
           date: '2024.10.28',
           imageUrl: 'assets/images/column_image.png',
-          tags: ['#혈당관리', '#식사방법', '#건강'],
+          tags: const ['#혈당관리', '#식사방법', '#건강'],
           onTap: () => _showColumnDetail(context),
         );
       },

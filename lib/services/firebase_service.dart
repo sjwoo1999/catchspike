@@ -1,61 +1,133 @@
 // lib/services/firebase_service.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
-import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
-import '../models/user.dart' as app_user;
+import 'package:catchspike/models/users.dart' as app_user;
+import 'package:catchspike/utils/logger.dart';
+import 'dart:io';
+import 'package:firebase_storage/firebase_storage.dart';
+import '../models/meal_record.dart';
 
 class FirebaseService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseStorage _storage = FirebaseStorage.instance;
 
-  // Kakao 사용자 정보를 Firebase에 저장
-  Future<void> saveUserToFirebase(User kakaoUser) async {
+  // lib/services/firebase_service.dart의 saveUser 메서드
+  Future<void> saveUser(app_user.User user) async {
     try {
-      // Kakao 사용자 정보로 커스텀 토큰 생성 (백엔드에서 처리해야 함)
-      // 여기서는 예시로 직접 로그인하는 방식을 보여줍니다
-      final userCredential = await _auth.signInAnonymously();
-      final uid = userCredential.user!.uid;
+      Logger.log('사용자 정보 저장 시작: ${user.id}');
 
-      // Firestore에 사용자 정보 저장
-      final userData = app_user.User(
-        id: uid,
-        name: kakaoUser.kakaoAccount?.profile?.nickname ?? '',
-        email: kakaoUser.kakaoAccount?.email ?? '',
-      );
+      // Firestore 데이터 준비
+      Map<String, dynamic> userData = user.toFirestore();
+      Logger.log('변환된 Firestore 데이터: $userData');
 
-      await _firestore.collection('users').doc(uid).set(
-            userData.toJson(),
+      // 데이터 저장
+      await _firestore.collection('users').doc(user.id).set(
+            userData,
             SetOptions(merge: true),
           );
 
-      print('Firebase에 사용자 정보 저장 완료: $uid');
+      Logger.log('사용자 정보 저장 성공: ${user.id}');
     } catch (e) {
-      print('Firebase 사용자 정보 저장 실패: $e');
+      Logger.log('사용자 정보 저장 실패: $e');
       rethrow;
     }
   }
 
-  // Firebase에서 사용자 정보 조회
-  Future<app_user.User?> getUserFromFirebase(String uid) async {
+  Future<app_user.User?> getCurrentUser() async {
     try {
-      final doc = await _firestore.collection('users').doc(uid).get();
-      if (doc.exists) {
-        return app_user.User.fromJson(doc.data() as Map<String, dynamic>);
+      final firebaseUser = _auth.currentUser;
+      if (firebaseUser == null) {
+        Logger.log('현재 로그인된 사용자 없음');
+        return null;
       }
-      return null;
+
+      final doc =
+          await _firestore.collection('users').doc(firebaseUser.uid).get();
+
+      if (!doc.exists) {
+        Logger.log('사용자 문서가 Firestore에 존재하지 않음: ${firebaseUser.uid}');
+        return null;
+      }
+
+      final user = app_user.User.fromFirestore(doc);
+      Logger.log('현재 사용자 정보 로드 성공: ${user.id}');
+      return user;
     } catch (e) {
-      print('Firebase 사용자 정보 조회 실패: $e');
-      return null;
+      Logger.log('현재 사용자 정보 조회 실패: $e');
+      rethrow;
     }
   }
 
-  // 사용자 정보 업데이트
-  Future<void> updateUserInFirebase(app_user.User user) async {
+  // 식사 기록 관련 메서드
+  Future<String> uploadMealImage(File imageFile, String userId) async {
     try {
-      await _firestore.collection('users').doc(user.id).update(user.toJson());
-      print('Firebase 사용자 정보 업데이트 완료');
+      final String date = DateTime.now().toIso8601String().split('T').first;
+      final fileName =
+          'meal_images/${userId}/${date}/${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final storageRef = _storage.ref().child(fileName);
+
+      // 이미지 업로드
+      final uploadTask = storageRef.putFile(
+        imageFile,
+        SettableMetadata(
+          contentType: 'image/jpeg',
+          customMetadata: {
+            'uploadedBy': userId,
+            'uploadedAt': DateTime.now().toIso8601String(),
+          },
+        ),
+      );
+
+      final snapshot = await uploadTask;
+      final downloadUrl = await snapshot.ref.getDownloadURL();
+
+      Logger.log("식사 이미지 업로드 성공: $fileName");
+      return downloadUrl;
     } catch (e) {
-      print('Firebase 사용자 정보 업데이트 실패: $e');
+      Logger.log("식사 이미지 업로드 실패: $e");
+      rethrow;
+    }
+  }
+
+  Future<void> saveMealRecord(MealRecord mealRecord) async {
+    try {
+      final recordData = {
+        ...mealRecord.toJson(),
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      final docRef = await _firestore
+          .collection('users')
+          .doc(mealRecord.userId)
+          .collection('meal_records')
+          .add(recordData);
+
+      Logger.log('식사 기록 저장 성공: ${docRef.id}');
+    } catch (e) {
+      Logger.log('식사 기록 저장 실패: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> updateUserOnboardingStatus({
+    required String userId,
+    required bool isCompleted,
+    required DateTime completedAt,
+  }) async {
+    try {
+      await _firestore.collection('users').doc(userId).update({
+        'onboarding': {
+          'isCompleted': isCompleted,
+          'completedAt': completedAt,
+        },
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      Logger.log('온보딩 상태 업데이트 성공: $userId');
+    } catch (e) {
+      Logger.log('온보딩 상태 업데이트 실패: $e');
       rethrow;
     }
   }

@@ -7,9 +7,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:784791191729:android:5ccafea24a1bffdedaa290",
+        "mobilesdk_app_id": "1:784791191729:android:ca13f868b14f34a8daa290",
         "android_client_info": {
-          "package_name": "com.example.catchspike"
+          "package_name": "com.sjwoo.catchspike"
         }
       },
       "oauth_client": [],

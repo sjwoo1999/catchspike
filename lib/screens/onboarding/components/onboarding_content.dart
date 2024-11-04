@@ -33,7 +33,6 @@ class OnboardingContent extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 40),
               child: Column(
                 children: [
-                  // 로고
                   Container(
                     width: 140,
                     height: 140,
@@ -51,7 +50,7 @@ class OnboardingContent extends StatelessWidget {
                     ),
                     child: Center(
                       child: Image.asset(
-                        'assets/images/Logo(White).png',
+                        'assets/images/logo_white.png',
                         width: 90,
                         height: 90,
                         fit: BoxFit.contain,
@@ -59,7 +58,6 @@ class OnboardingContent extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 48),
-                  // 앱 이름
                   const Text(
                     'CATCHSPIKE',
                     style: TextStyle(
@@ -74,7 +72,6 @@ class OnboardingContent extends StatelessWidget {
               ),
             ),
             const Spacer(flex: 1),
-            // 설명 & 로그인 섹션
             Container(
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 40),
@@ -101,7 +98,6 @@ class OnboardingContent extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 40),
-                  // 카카오 로그인 버튼
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: GestureDetector(

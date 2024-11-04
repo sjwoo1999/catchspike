@@ -47,18 +47,29 @@ class HomeContent extends StatelessWidget {
     return days[weekday - 1];
   }
 
+  String _getLastLoginMessage(DateTime? lastLoginAt) {
+    if (lastLoginAt == null) return '처음 오셨군요! 환영합니다!';
+    final now = DateTime.now();
+    final difference = now.difference(lastLoginAt);
+    if (difference.inDays >= 1) {
+      return '${difference.inDays}일 만에 돌아오셨군요!';
+    } else {
+      return '오늘도 오셨군요!';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer<UserProvider>(
       builder: (context, userProvider, child) {
         final user = userProvider.user;
-        final String userName = user?.kakaoAccount?.profile?.nickname ?? '사용자';
-        final String? profileImageUrl =
-            user?.kakaoAccount?.profile?.profileImageUrl;
+        final String userName = user?.name ?? '사용자';
+        final String? profileImageUrl = user?.profileImageUrl;
+        final DateTime? lastLoginAt = user?.lastLoginAt;
 
         const currentCalories = 1500;
         const recommendedCalories = 2500;
-        final double percentage = currentCalories / recommendedCalories;
+        const double percentage = currentCalories / recommendedCalories;
 
         return SingleChildScrollView(
           child: Padding(
@@ -96,6 +107,17 @@ class HomeContent extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
+                        _getLastLoginMessage(lastLoginAt),
+                        style: const TextStyle(
+                          fontFamily: 'Pretendard',
+                          fontSize: 16,
+                          fontWeight: FontWeight.w400,
+                          color: Color(0xFF666666),
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
                         _getTimeBasedMessage(),
                         style: const TextStyle(
                           fontFamily: 'Pretendard',
@@ -105,25 +127,12 @@ class HomeContent extends StatelessWidget {
                           letterSpacing: -0.3,
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      const Text(
-                        '어떤 맛있는 메뉴로\n에너지를 충전하셨나요? 🍽️',
-                        style: TextStyle(
-                          fontFamily: 'Pretendard',
-                          fontSize: 20,
-                          fontWeight: FontWeight.w400,
-                          color: Color(0xFF1A1A1A),
-                          height: 1.3,
-                          letterSpacing: -0.3,
-                        ),
-                      ),
                       const SizedBox(height: 20),
                       SizedBox(
                         width: double.infinity,
                         height: 50,
                         child: ElevatedButton(
                           onPressed: () {
-                            // 식사 기록 기능 구현
                             Navigator.push(
                               context,
                               MaterialPageRoute(
@@ -198,9 +207,9 @@ class HomeContent extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      Text(
+                      const Text(
                         '$currentCalories / $recommendedCalories kcal',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontFamily: 'Pretendard',
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
@@ -266,8 +275,8 @@ class ProfileBorderPainter extends CustomPainter {
 
     canvas.drawArc(
       Rect.fromCircle(center: center, radius: radius),
-      -pi / 2, // 시작 각도 (12시 방향)
-      2 * pi * percentage, // 진행도에 따른 호의 길이
+      -pi / 2,
+      2 * pi * percentage,
       false,
       paint,
     );

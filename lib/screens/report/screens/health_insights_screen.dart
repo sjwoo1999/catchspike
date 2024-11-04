@@ -11,12 +11,12 @@ class HealthInsightsScreen extends StatelessWidget {
         backgroundColor: const Color(0xFFE30547),
         foregroundColor: Colors.white,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+      body: const SingleChildScrollView(
+        padding: EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               '나의 건강 분석',
               style: TextStyle(
                 fontFamily: 'Pretendard',
@@ -25,7 +25,7 @@ class HealthInsightsScreen extends StatelessWidget {
                 letterSpacing: -0.3,
               ),
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: 16),
             // 건강 인사이트 상세 정보를 보여주는 위젯들 추가 예정
           ],
         ),

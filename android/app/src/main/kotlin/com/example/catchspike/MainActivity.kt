@@ -1,4 +1,4 @@
-package com.example.catchspike
+package com.sjwoo.catchspike
 
 import io.flutter.embedding.android.FlutterActivity
 

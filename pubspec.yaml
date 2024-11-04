@@ -10,26 +10,40 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  
+  # State Management
   provider: ^6.0.0
-  flutter_dotenv: ^5.0.2
-
-  cupertino_icons: ^1.0.8
-  kakao_flutter_sdk: ^1.9.6
-
-  intl: ^0.18.1
-
-  image_picker: ^1.0.4
-
   get: ^4.6.6
+
+  # Networking
+  http: ^1.1.0  # HTTP 패키지 추가
+
+  # Firebase - 안정적이고 호환성이 있는 버전으로 설정
+  firebase_core: ^3.6.0  # Firebase 초기화에 필요
+  firebase_auth: ^5.3.1  # 사용자 인증
+  firebase_storage: ^12.3.4  # 이미지 저장
+  cloud_firestore: ^5.4.4  # 데이터 저장
+
+  # UI & Utilities
+  cupertino_icons: ^1.0.8
+  image_picker: ^1.0.4
+  intl: ^0.18.1
+  
+  # Authentication & Configuration
+  kakao_flutter_sdk: ^1.9.5  # Kakao SDK 메인 패키지
+  flutter_dotenv: ^5.0.2  # 환경 변수 로드
+
+  # Additional Kakao SDK dependencies
+  kakao_flutter_sdk_user: ^1.9.5
+  kakao_flutter_sdk_common: ^1.9.5
+  path: any  # 경로 처리를 위해 추가
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-
   flutter_lints: ^4.0.0
 
 flutter:
-
   uses-material-design: true
 
   assets:
