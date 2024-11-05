@@ -10,6 +10,7 @@ import 'dart:convert';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../models/user_details.dart';
 import 'firebase_service.dart';
+import '../screens/onboarding/onboarding_screen.dart';
 
 class AuthService {
   static final AuthService _instance = AuthService._internal();
@@ -29,30 +30,39 @@ class AuthService {
   final firebase.FirebaseAuth _firebaseAuth = firebase.FirebaseAuth.instance;
   final FirebaseService _firebaseService = FirebaseService();
 
-  // Kakao 로그인 및 Firebase 인증 함수
-  Future<app_user.User?> loginWithKakao(UserDetails userDetails) async {
+  Future<app_user.User?> loginWithKakao(
+      BuildContext context, UserDetails userDetails) async {
     try {
-      // Firebase 커스텀 토큰 획득
+      if (context.mounted) {
+        Provider.of<UserProvider>(context, listen: false).setLoading(true);
+      }
+
+      // Check if kakao token exists first
+      if (!await kakao.AuthApi.instance.hasToken()) {
+        throw kakao.KakaoClientException(
+          kakao.ClientErrorCause.tokenNotFound,
+          'Failed to find Kakao authentication token', // 두 번째 필수 인자 추가
+        );
+      }
+
       final customToken = await getFirebaseCustomToken(
         userDetails.uid,
-        userDetails.email ?? '', // 빈 문자열 제공
+        userDetails.email ?? '',
         userDetails.displayName,
-        userDetails.photoURL ?? '', // 빈 문자열 제공
+        userDetails.photoURL ?? '',
       );
       Logger.log("Firebase 커스텀 토큰 획득 성공");
 
-      // Firebase 인증
       final userCredential =
           await _firebaseAuth.signInWithCustomToken(customToken);
 
       if (userCredential.user != null) {
-        // 앱의 사용자 모델 생성
         final user = app_user.User(
           id: userCredential.user!.uid,
           name: userDetails.displayName,
-          email: userDetails.email, // nullable
+          email: userDetails.email,
           kakaoId: userDetails.uid,
-          profileImageUrl: userDetails.photoURL, // nullable
+          profileImageUrl: userDetails.photoURL,
           lastLoginAt: DateTime.now(),
         );
 
@@ -66,11 +76,26 @@ class AuthService {
       return null;
     } catch (e) {
       Logger.log("로그인 프로세스 실패: $e");
+      if (e is kakao.KakaoClientException) {
+        if (context.mounted) {
+          await signOut(context);
+
+          if (context.mounted) {
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (context) => const OnboardingScreen()),
+              (route) => false,
+            );
+          }
+        }
+      }
       rethrow;
+    } finally {
+      if (context.mounted) {
+        Provider.of<UserProvider>(context, listen: false).setLoading(false);
+      }
     }
   }
 
-  // Firebase 커스텀 토큰 생성 함수
   Future<String> getFirebaseCustomToken(
       String id, String email, String nickname, String profileImageUrl) async {
     try {
@@ -151,19 +176,21 @@ class AuthService {
   }
 
   Future<void> signOut(BuildContext context) async {
-    if (!context.mounted) return;
-
     try {
       await _firebaseAuth.signOut();
       Logger.log("Firebase 로그아웃 성공");
 
-      if (await kakao.AuthApi.instance.hasToken()) {
-        await kakao.UserApi.instance.unlink();
-        Logger.log("카카오 연동 해제 성공");
+      try {
+        if (await kakao.AuthApi.instance.hasToken()) {
+          await kakao.UserApi.instance.logout();
+          Logger.log("카카오 로그아웃 성공");
+        }
+      } catch (e) {
+        Logger.log("카카오 로그아웃 실패: $e");
       }
 
       if (context.mounted) {
-        Provider.of<UserProvider>(context, listen: false).clearUser();
+        await Provider.of<UserProvider>(context, listen: false).clearUser();
         Logger.log("로그아웃 프로세스 완료");
       }
     } catch (e) {
@@ -185,6 +212,24 @@ class AuthService {
       return await kakao.AuthApi.instance.hasToken();
     } catch (e) {
       Logger.log("카카오 로그인 상태 확인 실패: $e");
+      return false;
+    }
+  }
+
+  Future<bool> validateTokens(BuildContext context) async {
+    try {
+      final firebaseUser = _firebaseAuth.currentUser;
+      if (firebaseUser == null) {
+        return false;
+      }
+
+      if (!await isKakaoLoggedIn()) {
+        return false;
+      }
+
+      return true;
+    } catch (e) {
+      Logger.log("토큰 유효성 검사 실패: $e");
       return false;
     }
   }

@@ -1,10 +1,9 @@
-// lib/models/meal_record.dart
 class MealRecord {
   final String userId;
   final String imageUrl;
   final String mealType;
   final DateTime timestamp;
-  final Map<String, dynamic>? analysisResult;
+  final Map<String, dynamic>? analysisResult; // ChatGPT 응답 전체를 저장
 
   MealRecord({
     required this.userId,

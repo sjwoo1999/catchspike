@@ -1,5 +1,3 @@
-// lib/models/user_details.dart
-
 class UserDetails {
   final String uid;
   final String email;

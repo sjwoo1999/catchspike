@@ -13,10 +13,9 @@ class UserProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
 
   Future<void> initializeUser() async {
+    setLoading(true); // 사용자 초기화 시작 시 로딩 상태 true로 설정
     try {
-      setLoading(true);
       final currentUser = await _firebaseService.getCurrentUser();
-
       if (currentUser != null) {
         _user = currentUser;
         Logger.log('사용자 정보 초기화 성공: ${currentUser.id}');
@@ -26,7 +25,7 @@ class UserProvider extends ChangeNotifier {
     } catch (e) {
       Logger.log('사용자 정보 초기화 실패: $e');
     } finally {
-      setLoading(false); // Make sure to set loading to false here.
+      setLoading(false); // 사용자 정보 초기화 완료 후 로딩 상태 false로 설정
     }
   }
 

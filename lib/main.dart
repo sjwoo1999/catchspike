@@ -19,22 +19,30 @@ import 'providers/user_provider.dart';
 import 'utils/global_keys.dart';
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
   try {
+    WidgetsFlutterBinding.ensureInitialized();
+
+    // 1. 환경 변수 로드
     await dotenv.load(fileName: ".env");
     Logger.log("✅ .env 파일을 성공적으로 로드했습니다.");
 
-    // Kakao SDK 초기화
+    // 2. 필수 환경 변수 검증
+    _validateEnvironmentVariables();
+
+    // 3. Firebase 초기화 (한 번만 실행)
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+      Logger.log("✅ Firebase 초기화 완료");
+    }
+
+    // 4. Kakao SDK 초기화
     kakao_sdk.KakaoSdk.init(
-      nativeAppKey: dotenv.env['KAKAO_NATIVE_APP_KEY'],
+      nativeAppKey: dotenv.env['KAKAO_NATIVE_APP_KEY']!,
       javaScriptAppKey: dotenv.env['JAVASCRIPT_APP_KEY'] ?? '',
     );
-
-    // Firebase 초기화
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
+    Logger.log("✅ Kakao SDK 초기화 완료");
 
     runApp(
       MultiProvider(
@@ -47,6 +55,20 @@ Future<void> main() async {
   } catch (e) {
     Logger.log("❌ 초기화 실패: $e");
     rethrow;
+  }
+}
+
+void _validateEnvironmentVariables() {
+  final requiredEnvVars = [
+    'KAKAO_NATIVE_APP_KEY',
+    'OPENAI_API_KEY',
+    'FIREBASE_FUNCTION_URL'
+  ];
+
+  for (final envVar in requiredEnvVars) {
+    if (dotenv.env[envVar]?.isEmpty ?? true) {
+      throw Exception('Required environment variable $envVar is not set');
+    }
   }
 }
 
@@ -66,29 +88,21 @@ class MyApp extends StatelessWidget {
           elevation: 0,
         ),
       ),
+      // home 속성 제거
+      initialRoute: '/', // 초기 라우트 설정
       routes: {
-        "/home": (context) => const MainScreen(), // Add this route
-      },
-      home: FutureBuilder(
-        future: Firebase.initializeApp(
-          options: DefaultFirebaseOptions.currentPlatform,
-        ),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.done) {
-            return Consumer<UserProvider>(
+        '/': (context) => Consumer<UserProvider>(
               builder: (context, userProvider, child) {
-                // Check user state
-                if (userProvider.user == null) {
-                  // If user is not logged in, redirect to onboarding
-                  return OnboardingScreen();
-                }
-                return const MainScreen(); // Navigate to main screen if logged in
+                return userProvider.user == null
+                    ? const OnboardingScreen()
+                    : const MainScreen();
               },
-            );
-          }
-          return const LoadingIndicator(); // Show loading UI while waiting for Firebase initialization
-        },
-      ),
+            ),
+        '/home': (context) => const MainScreen(initialIndex: 0),
+        '/report': (context) => const MainScreen(initialIndex: 1),
+        '/community': (context) => const MainScreen(initialIndex: 2),
+        '/achievement': (context) => const MainScreen(initialIndex: 3),
+      },
       debugShowCheckedModeBanner: false,
       scaffoldMessengerKey: scaffoldMessengerKey,
     );
@@ -120,16 +134,30 @@ class _MainScreenState extends State<MainScreen> {
     AchievementsScreen(),
   ];
 
+  void _onItemTapped(int index) {
+    if (_selectedIndex != index) {
+      setState(() {
+        _selectedIndex = index;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
       appBar: AppBar(
-        title: const Text('CATCHSPIKE'),
+        title: const Text(
+          'CATCHSPIKE',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         centerTitle: false,
         actions: [
           IconButton(
-            icon: const Icon(Icons.menu),
+            icon: const Icon(Icons.menu, size: 24),
             onPressed: () {
               _scaffoldKey.currentState?.openEndDrawer();
             },
@@ -181,27 +209,16 @@ class _MainScreenState extends State<MainScreen> {
           showUnselectedLabels: true,
           selectedFontSize: 12,
           unselectedFontSize: 12,
-          onTap: (index) {
-            setState(() {
-              _selectedIndex = index;
-              switch (index) {
-                case 0:
-                  Navigator.pushNamed(context, '/home');
-                  break;
-                case 1:
-                  Navigator.pushNamed(context, '/report');
-                  break;
-                case 2:
-                  Navigator.pushNamed(context, '/community');
-                  break;
-                case 3:
-                  Navigator.pushNamed(context, '/achievement');
-                  break;
-              }
-            });
-          },
+          onTap: _onItemTapped,
+          elevation: 0,
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    // 필요한 리소스 정리
+    super.dispose();
   }
 }

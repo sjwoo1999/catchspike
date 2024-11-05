@@ -72,5 +72,11 @@
 	<key>NSCameraUsageDescription</key>
 	<string>음식 사진 촬영을 위해 카메라에 접근하려고 합니다.</string>
 
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+    	<string>sms</string>
+    	<string>tel</string>
+	</array>
+
 </dict>
 </plist>

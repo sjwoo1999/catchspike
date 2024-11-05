@@ -52,7 +52,6 @@ class LoggedInMenuContentState extends State<LoggedInMenuContent> {
   Future<void> _logout() async {
     try {
       Navigator.pop(context);
-
       await kakao.UserApi.instance.logout();
 
       if (!mounted) return;
@@ -181,7 +180,7 @@ class LoggedOutMenuContentState extends State<LoggedOutMenuContent> {
       );
 
       final app_user.User? appUser =
-          await _authService.loginWithKakao(userDetails);
+          await _authService.loginWithKakao(context, userDetails);
 
       if (!mounted) return;
 
