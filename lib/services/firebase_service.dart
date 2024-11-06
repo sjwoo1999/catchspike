@@ -1,113 +1,47 @@
-// lib/services/firebase_service.dart
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
-import 'package:catchspike/models/users.dart' as app_user;
-import 'package:catchspike/utils/logger.dart';
 import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../models/meal_record.dart';
-import 'package:http/http.dart' as http;
+import '../models/users.dart';
+import '../models/onboarding_status.dart';
+import '../utils/logger.dart';
+import 'package:intl/intl.dart';
 
 class FirebaseService {
-  final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
+  final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
 
-  Future<void> saveUser(app_user.User user) async {
+  // User 관련 메서드들
+  Future<User?> getCurrentUser() async {
     try {
-      Logger.log('사용자 정보 저장 시작: ${user.id}');
-      Map<String, dynamic> userData = user.toFirestore();
-      Logger.log('변환된 Firestore 데이터: $userData');
+      final userAuth = _auth.currentUser;
+      if (userAuth == null) return null;
 
-      await _firestore.collection('users').doc(user.id).set(
-            userData,
-            SetOptions(merge: true),
-          );
+      final userDoc =
+          await _firestore.collection('users').doc(userAuth.uid).get();
+      if (!userDoc.exists) {
+        Logger.log('사용자 문서가 존재하지 않음: ${userAuth.uid}');
+        return null;
+      }
 
+      return User.fromFirestore(userDoc);
+    } catch (e) {
+      Logger.log('현재 사용자 조회 실패: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> saveUser(User user) async {
+    try {
+      await _firestore
+          .collection('users')
+          .doc(user.id)
+          .set(user.toFirestore(), SetOptions(merge: true));
       Logger.log('사용자 정보 저장 성공: ${user.id}');
     } catch (e) {
       Logger.log('사용자 정보 저장 실패: $e');
-      rethrow;
-    }
-  }
-
-  Future<app_user.User?> getCurrentUser() async {
-    try {
-      final firebaseUser = _auth.currentUser;
-      if (firebaseUser == null) {
-        Logger.log('현재 로그인된 사용자 없음');
-        return null;
-      }
-
-      final doc =
-          await _firestore.collection('users').doc(firebaseUser.uid).get();
-
-      if (!doc.exists) {
-        Logger.log('사용자 문서가 Firestore에 존재하지 않음: ${firebaseUser.uid}');
-        return null;
-      }
-
-      final user = app_user.User.fromFirestore(doc);
-      Logger.log('현재 사용자 정보 로드 성공: ${user.id}');
-      return user;
-    } catch (e) {
-      Logger.log('현재 사용자 정보 조회 실패: $e');
-      rethrow;
-    }
-  }
-
-  Future<String> uploadMealImage(File imageFile, String userId) async {
-    try {
-      final String date = DateTime.now().toIso8601String().split('T')[0];
-      final fileName =
-          'meal_images/$userId/$date/${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final storageRef = _storage.ref().child(fileName);
-
-      // 메타데이터 설정
-      final metadata = SettableMetadata(
-        contentType: 'image/jpeg',
-        customMetadata: {
-          'uploadedBy': userId,
-          'uploadedAt': DateTime.now().toIso8601String(),
-        },
-      );
-
-      // 이미지 업로드
-      final uploadTask = await storageRef.putFile(imageFile, metadata);
-
-      // URL 가져오기 및 검증
-      final downloadUrl = await uploadTask.ref.getDownloadURL();
-
-      // URL 검증
-      final response = await http.get(Uri.parse(downloadUrl));
-      if (response.statusCode != 200) {
-        throw Exception('이미지 URL 검증 실패: ${response.statusCode}');
-      }
-
-      return downloadUrl;
-    } catch (e) {
-      Logger.log('이미지 업로드 실패: $e');
-      rethrow;
-    }
-  }
-
-  Future<void> saveMealRecord(MealRecord mealRecord) async {
-    try {
-      final recordData = {
-        ...mealRecord.toJson(),
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
-
-      await _firestore
-          .collection('users')
-          .doc(mealRecord.userId)
-          .collection('meal_records')
-          .add(recordData);
-
-      Logger.log('식사 기록 저장 성공');
-    } catch (e) {
-      Logger.log('식사 기록 저장 실패: $e');
       rethrow;
     }
   }
@@ -121,15 +55,153 @@ class FirebaseService {
       await _firestore.collection('users').doc(userId).update({
         'onboarding': {
           'isCompleted': isCompleted,
-          'completedAt': completedAt,
+          'completedAt': Timestamp.fromDate(completedAt),
         },
-        'updatedAt': FieldValue.serverTimestamp(),
       });
-
-      Logger.log('온보딩 상태 업데이트 성공: $userId');
+      Logger.log('사용자 온보딩 상태 업데이트 성공: $userId');
     } catch (e) {
-      Logger.log('온보딩 상태 업데이트 실패: $e');
+      Logger.log('사용자 온보딩 상태 업데이트 실패: $e');
       rethrow;
     }
+  }
+
+  // MealRecord 관련 메서드들
+  Future<MealRecord> createMealRecord({
+    required String userId,
+    required String imageUrl,
+    required String mealType,
+    required DateTime timestamp,
+  }) async {
+    try {
+      // 1. 문서 참조 생성
+      final docRef =
+          _firestore.collection('users').doc(userId).collection('meals').doc();
+      final now = DateTime.now();
+
+      // 2. MealRecord 객체 생성
+      final record = MealRecord(
+        id: docRef.id,
+        userId: userId,
+        imageUrl: imageUrl,
+        timestamp: timestamp,
+        mealType: mealType,
+        analysisResult: {},
+        status: 'pending_analysis',
+        createdAt: now,
+        updatedAt: now,
+      );
+
+      // 3. 데이터 저장
+      await docRef.set(record.toJson());
+
+      Logger.log('식사 기록 문서 생성 성공: ${docRef.id}');
+      return record;
+    } catch (e) {
+      Logger.log('식사 기록 생성 실패: $e');
+      rethrow;
+    }
+  }
+
+  Future<MealRecord?> getMealRecord(String userId, String recordId) async {
+    try {
+      Logger.log('식사 기록 문서 조회 시작: $recordId');
+
+      final docRef = _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('meals')
+          .doc(recordId);
+
+      final docSnapshot = await docRef.get();
+
+      if (docSnapshot.exists) {
+        final record = MealRecord.fromFirestore(docSnapshot);
+        Logger.log('식사 기록 조회 성공: ${record.toString()}');
+        return record;
+      } else {
+        Logger.log('식사 기록 문서를 찾을 수 없음: $recordId');
+        return null;
+      }
+    } catch (e) {
+      Logger.log('식사 기록 조회 실패: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> updateMealRecordStatus(
+    String userId,
+    String recordId, {
+    required String status,
+    String? error,
+    Map<String, dynamic>? analysisResult,
+  }) async {
+    try {
+      final docRef = _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('meals')
+          .doc(recordId);
+
+      // 업데이트할 데이터 준비
+      final updates = <String, dynamic>{
+        'status': status,
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      if (error != null) {
+        updates['error'] = error;
+      }
+
+      if (analysisResult != null) {
+        updates['analysisResult'] = analysisResult;
+        updates['analyzedAt'] = FieldValue.serverTimestamp();
+      }
+
+      // 데이터 업데이트
+      await docRef.update(updates);
+
+      Logger.log('식사 기록 상태 업데이트 성공: $recordId, 상태: $status');
+    } catch (e) {
+      Logger.log('식사 기록 상태 업데이트 실패: $e');
+      rethrow;
+    }
+  }
+
+  Future<String> uploadMealImage(File imageFile, String userId) async {
+    try {
+      final dateStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final fileName = '${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+      final ref = _storage
+          .ref()
+          .child('meal_images')
+          .child(userId)
+          .child(dateStr)
+          .child(fileName);
+
+      final metadata = SettableMetadata(
+        contentType: 'image/jpeg',
+        customMetadata: {'userId': userId},
+      );
+
+      final uploadTask = await ref.putFile(imageFile, metadata);
+      final downloadUrl = await uploadTask.ref.getDownloadURL();
+
+      Logger.log('이미지 업로드 성공: $downloadUrl');
+      return downloadUrl;
+    } catch (e) {
+      Logger.log('이미지 업로드 실패: $e');
+      rethrow;
+    }
+  }
+
+  Stream<MealRecord> watchMealRecord(String userId, String recordId) {
+    return _firestore
+        .collection('users')
+        .doc(userId)
+        .collection('meals')
+        .doc(recordId)
+        .snapshots()
+        .map((snapshot) => MealRecord.fromFirestore(snapshot));
   }
 }

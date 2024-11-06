@@ -23,37 +23,41 @@ Future<void> main() async {
     WidgetsFlutterBinding.ensureInitialized();
 
     // 1. 환경 변수 로드
-    await dotenv.load(fileName: ".env");
-    Logger.log("✅ .env 파일을 성공적으로 로드했습니다.");
+    await dotenv.load();
+    Logger.log("✅ .env 파일 로드 완료");
 
-    // 2. 필수 환경 변수 검증
-    _validateEnvironmentVariables();
+    // 2. 환경 변수 검증
+    FirebaseConfig.validateConfig();
 
-    // 3. Firebase 초기화 (한 번만 실행)
+    // 3. Firebase 초기화
     if (Firebase.apps.isEmpty) {
       await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
+        options: FirebaseConfig.currentPlatform,
       );
       Logger.log("✅ Firebase 초기화 완료");
     }
 
     // 4. Kakao SDK 초기화
     kakao_sdk.KakaoSdk.init(
-      nativeAppKey: dotenv.env['KAKAO_NATIVE_APP_KEY']!,
-      javaScriptAppKey: dotenv.env['JAVASCRIPT_APP_KEY'] ?? '',
+      nativeAppKey: FirebaseConfig.kakaoNativeKey,
+      javaScriptAppKey: FirebaseConfig.kakaoJavaScriptKey,
     );
     Logger.log("✅ Kakao SDK 초기화 완료");
 
     runApp(
       MultiProvider(
         providers: [
-          ChangeNotifierProvider<UserProvider>(create: (_) => UserProvider()),
+          ChangeNotifierProvider<UserProvider>(
+            create: (_) => UserProvider(),
+          ),
         ],
         child: const MyApp(),
       ),
     );
-  } catch (e) {
-    Logger.log("❌ 초기화 실패: $e");
+  } catch (e, stackTrace) {
+    Logger.log("❌ 앱 초기화 실패:");
+    Logger.log("오류 내용: $e");
+    Logger.log("스택 트레이스: $stackTrace");
     rethrow;
   }
 }
@@ -62,7 +66,7 @@ void _validateEnvironmentVariables() {
   final requiredEnvVars = [
     'KAKAO_NATIVE_APP_KEY',
     'OPENAI_API_KEY',
-    'FIREBASE_FUNCTION_URL'
+    'ANALYZE_FOOD_IMAGE_URL'
   ];
 
   for (final envVar in requiredEnvVars) {
@@ -88,7 +92,6 @@ class MyApp extends StatelessWidget {
           elevation: 0,
         ),
       ),
-      // home 속성 제거
       initialRoute: '/', // 초기 라우트 설정
       routes: {
         '/': (context) => Consumer<UserProvider>(
@@ -218,7 +221,6 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   void dispose() {
-    // 필요한 리소스 정리
     super.dispose();
   }
 }

@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'onboarding_status.dart';
 
 class User {
   final String id;
@@ -7,6 +8,7 @@ class User {
   final String kakaoId;
   final String? profileImageUrl;
   final DateTime lastLoginAt;
+  final OnboardingStatus? onboarding;
 
   User({
     required this.id,
@@ -15,6 +17,7 @@ class User {
     required this.kakaoId,
     this.profileImageUrl,
     required this.lastLoginAt,
+    this.onboarding, // 생성자에 추가
   });
 
   // Firestore에서 데이터를 변환하는 factory constructor
@@ -28,6 +31,10 @@ class User {
       kakaoId: data['kakaoId'] ?? '',
       profileImageUrl: data['profileImageUrl'],
       lastLoginAt: _parseTimestamp(data['lastLoginAt']),
+      onboarding: data['onboarding'] != null
+          ? OnboardingStatus.fromJson(
+              data['onboarding'] as Map<String, dynamic>)
+          : null, // fromFirestore에 추가
     );
   }
 
@@ -49,8 +56,29 @@ class User {
       'email': email,
       'kakaoId': kakaoId,
       'profileImageUrl': profileImageUrl,
-      'lastLoginAt':
-          Timestamp.fromDate(lastLoginAt), // Firestore에 저장할 때는 Timestamp 사용
+      'lastLoginAt': Timestamp.fromDate(lastLoginAt),
+      'onboarding': onboarding?.toJson(), // toFirestore에 추가
     };
+  }
+
+  // 객체 복사를 위한 copyWith 메서드 추가
+  User copyWith({
+    String? id,
+    String? name,
+    String? email,
+    String? kakaoId,
+    String? profileImageUrl,
+    DateTime? lastLoginAt,
+    OnboardingStatus? onboarding,
+  }) {
+    return User(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      email: email ?? this.email,
+      kakaoId: kakaoId ?? this.kakaoId,
+      profileImageUrl: profileImageUrl ?? this.profileImageUrl,
+      lastLoginAt: lastLoginAt ?? this.lastLoginAt,
+      onboarding: onboarding ?? this.onboarding,
+    );
   }
 }

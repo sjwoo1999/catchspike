@@ -1,4 +1,4 @@
-// lib/screens/meal/meal_record_screen.dart
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -33,6 +33,7 @@ class _MealRecordScreenState extends State<MealRecordScreen> {
       SnackBar(
         content: Text(message),
         backgroundColor: Colors.red,
+        duration: const Duration(seconds: 5), // 에러 메시지는 좀 더 오래 보여줌
       ),
     );
   }
@@ -81,40 +82,64 @@ class _MealRecordScreenState extends State<MealRecordScreen> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('로그인이 필요합니다');
 
+      final userId = user.uid;
+
       // 1. 이미지 업로드
       _updateAnalysisStatus('이미지 업로드 중...');
       final imageUrl =
-          await _firebaseService.uploadMealImage(_selectedImage!, user.uid);
+          await _firebaseService.uploadMealImage(_selectedImage!, userId);
 
-      // 2. ChatGPT로 이미지 분석
-      _updateAnalysisStatus('음식 분석 중...');
-      final analysisResult = await _analysisService.analyzeMealImage(imageUrl);
-
-      // 3. 식사 기록 생성
-      final mealRecord = MealRecord(
-        userId: user.uid,
+      // 2. 식사 기록 생성
+      final mealRecord = await _firebaseService.createMealRecord(
+        userId: userId,
         imageUrl: imageUrl,
         mealType: _selectedTime,
         timestamp: DateTime.now(),
-        analysisResult: analysisResult,
       );
 
-      // 4. 데이터베이스 저장
-      _updateAnalysisStatus('분석 결과 저장 중...');
-      await _firebaseService.saveMealRecord(mealRecord);
+      // 3. 이미지 분석 및 저장
+      _updateAnalysisStatus('음식 분석 중...');
+      try {
+        await _analysisService.analyzeAndSaveMealImage(
+          userId, // userId를 첫 번째 인자로 변경
+          mealRecord, // MealRecord 객체를 전달
+        );
 
-      if (!mounted) return;
+        if (!mounted) return;
 
-      // 5. 분석 결과 화면으로 이동
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (context) => MealAnalysisScreen(mealRecord: mealRecord),
-        ),
-      );
+        // 4. 분석 결과 화면으로 이동
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => MealAnalysisScreen(
+              mealRecord: mealRecord,
+              userId: userId,
+            ),
+          ),
+        );
+      } catch (e) {
+        Logger.log('식사 분석 실패: $e');
+        if (e is FirebaseFunctionsException) {
+          switch (e.code) {
+            case 'not-found':
+              _showErrorSnackBar('Firebase 함수를 찾을 수 없습니다. 관리자에게 문의하세요.');
+              break;
+            case 'internal':
+              _showErrorSnackBar('서버 내부 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+              break;
+            case 'unavailable':
+              _showErrorSnackBar('서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요.');
+              break;
+            default:
+              _showErrorSnackBar('분석 중 오류가 발생했습니다: ${e.message}');
+          }
+        } else {
+          _showErrorSnackBar('분석 중 오류가 발생했습니다. 다시 시도해주세요.');
+        }
+      }
     } catch (e) {
-      Logger.log('식사 분석 실패: $e');
+      Logger.log('처리 중 오류 발생: $e');
       if (mounted) {
-        _showErrorSnackBar('분석 중 오류가 발생했습니다: ${e.toString()}');
+        _showErrorSnackBar('처리 중 오류가 발생했습니다. 다시 시도해주세요.');
       }
     } finally {
       if (mounted) {
@@ -130,7 +155,7 @@ class _MealRecordScreenState extends State<MealRecordScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
+        title: const Text(
           '식사 기록하기',
           style: TextStyle(
             color: Colors.white,
@@ -178,22 +203,23 @@ class _MealRecordScreenState extends State<MealRecordScreen> {
                               decoration: const BoxDecoration(
                                 color: Colors.white,
                                 borderRadius: BorderRadius.vertical(
-                                    top: Radius.circular(20)),
+                                  top: Radius.circular(20),
+                                ),
                               ),
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   ListTile(
-                                    leading: Icon(Icons.camera_alt),
-                                    title: Text('카메라로 촬영하기'),
+                                    leading: const Icon(Icons.camera_alt),
+                                    title: const Text('카메라로 촬영하기'),
                                     onTap: () {
                                       Navigator.pop(context);
                                       _pickImage(ImageSource.camera);
                                     },
                                   ),
                                   ListTile(
-                                    leading: Icon(Icons.photo_library),
-                                    title: Text('갤러리에서 선택하기'),
+                                    leading: const Icon(Icons.photo_library),
+                                    title: const Text('갤러리에서 선택하기'),
                                     onTap: () {
                                       Navigator.pop(context);
                                       _pickImage(ImageSource.gallery);

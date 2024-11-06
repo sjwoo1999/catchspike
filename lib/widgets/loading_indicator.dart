@@ -1,8 +1,15 @@
+// lib/widgets/loading_indicator.dart
+
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 
 class LoadingIndicator extends StatefulWidget {
-  const LoadingIndicator({super.key});
+  final Color primaryColor;
+
+  const LoadingIndicator({
+    super.key,
+    this.primaryColor = const Color(0xFFE30547), // 기본값 설정
+  });
 
   @override
   State<LoadingIndicator> createState() => _LoadingIndicatorState();
@@ -29,6 +36,7 @@ class _LoadingIndicatorState extends State<LoadingIndicator>
 
   @override
   Widget build(BuildContext context) {
+    final Color primaryColor = widget.primaryColor;
     return Center(
       child: Container(
         width: 200,
@@ -61,14 +69,16 @@ class _LoadingIndicatorState extends State<LoadingIndicator>
                         child: Container(
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            gradient: const SweepGradient(
+                            gradient: SweepGradient(
                               colors: [
-                                Color(0xFFE30547),
-                                Color(0xFFFF6B8B),
+                                primaryColor,
+                                primaryColor.withOpacity(0.6),
                                 Colors.white,
-                                Color(0xFFE30547),
+                                primaryColor,
                               ],
-                              stops: [0.0, 0.3, 0.5, 1.0],
+                              stops: const [0.0, 0.3, 0.5, 1.0],
+                              tileMode: TileMode.clamp,
+                              transform: const GradientRotation(math.pi / 2),
                             ),
                             border: Border.all(
                               color: Colors.white,
@@ -89,16 +99,16 @@ class _LoadingIndicatorState extends State<LoadingIndicator>
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFFE30547).withOpacity(0.2),
+                            color: primaryColor.withOpacity(0.2),
                             blurRadius: 10,
                             spreadRadius: 2,
                           ),
                         ],
                       ),
-                      child: const Center(
+                      child: Center(
                         child: Icon(
                           Icons.local_dining,
-                          color: Color(0xFFE30547),
+                          color: primaryColor,
                           size: 30,
                         ),
                       ),
@@ -111,13 +121,14 @@ class _LoadingIndicatorState extends State<LoadingIndicator>
             TweenAnimationBuilder<double>(
               tween: Tween(begin: 0.0, end: 1.0),
               duration: const Duration(milliseconds: 600),
+              curve: Curves.easeInOut,
               builder: (context, value, child) {
                 return Opacity(
                   opacity: value,
-                  child: const Text(
+                  child: Text(
                     '잠시만 기다려주세요',
                     style: TextStyle(
-                      color: Color(0xFFE30547),
+                      color: primaryColor,
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                       letterSpacing: -0.5,

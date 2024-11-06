@@ -1,3 +1,6 @@
+// lib/widgets/custom_drawer.dart
+
+import 'package:catchspike/widgets/loading_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart' as kakao;
@@ -75,7 +78,10 @@ class LoggedInMenuContentState extends State<LoggedInMenuContent> {
     final bool isLoading = _userProvider.isLoading;
 
     if (isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(
+          child: LoadingIndicator(
+        primaryColor: Colors.white,
+      ));
     }
 
     final String userName = user?.name ?? '사용자 이름';
@@ -144,7 +150,9 @@ class LoggedInMenuContentState extends State<LoggedInMenuContent> {
         ListTile(
           leading: const Icon(Icons.logout),
           title: const Text('로그아웃'),
-          onTap: _logout,
+          onTap: () {
+            _logout(); // void 타입 에러 수정
+          },
         ),
       ],
     );
@@ -162,7 +170,7 @@ class LoggedOutMenuContentState extends State<LoggedOutMenuContent> {
   bool _isLoading = false;
   final AuthService _authService = AuthService();
 
-  Future<void> _loginWithKakao() async {
+  void _loginWithKakao() async {
     if (_isLoading) return;
 
     setState(() {
@@ -179,17 +187,14 @@ class LoggedOutMenuContentState extends State<LoggedOutMenuContent> {
         photoURL: kakaoUser.kakaoAccount?.profile?.profileImageUrl ?? '',
       );
 
+      if (!mounted) return;
       final app_user.User? appUser =
           await _authService.loginWithKakao(context, userDetails);
 
       if (!mounted) return;
-
       if (appUser != null) {
-        await Provider.of<UserProvider>(context, listen: false)
-            .setUser(appUser);
-
+        context.read<UserProvider>().setUser(appUser);
         Navigator.pop(context);
-
         scaffoldMessengerKey.currentState?.showSnackBar(
           const SnackBar(content: Text('로그인 성공')),
         );
@@ -242,10 +247,10 @@ class LoggedOutMenuContentState extends State<LoggedOutMenuContent> {
               ),
               const SizedBox(height: 24),
               GestureDetector(
-                onTap: _isLoading ? null : _loginWithKakao,
+                onTap: _isLoading ? null : () => _loginWithKakao(),
                 child: _isLoading
-                    ? const CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ? const LoadingIndicator(
+                        primaryColor: Colors.white,
                       )
                     : Image.asset(
                         'assets/images/kakao_login_medium_narrow.png',

@@ -1,21 +1,349 @@
-// lib/screens/meal/meal_analysis_screen.dart
 import 'package:flutter/material.dart';
-import 'package:catchspike/models/meal_record.dart';
-import 'package:catchspike/utils/logger.dart';
+import '../../models/meal_record.dart';
+import '../../services/firebase_service.dart';
+import '../../utils/logger.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:catchspike/widgets/loading_indicator.dart';
-import 'components/analysis_status.dart';
+import 'package:intl/intl.dart';
 
-class MealAnalysisScreen extends StatelessWidget {
+class MealAnalysisScreen extends StatefulWidget {
   final MealRecord mealRecord;
+  final String userId; // userId 추가
 
   const MealAnalysisScreen({
     Key? key,
     required this.mealRecord,
+    required this.userId, // userId 추가
   }) : super(key: key);
 
-  String _getMealTypeText(String type) {
-    switch (type) {
+  @override
+  State<MealAnalysisScreen> createState() => _MealAnalysisScreenState();
+}
+
+class _MealAnalysisScreenState extends State<MealAnalysisScreen> {
+  final FirebaseService _firebaseService = FirebaseService();
+  bool _isLoading = true;
+  String? _error;
+  MealRecord? _currentRecord;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAnalysisResult();
+  }
+
+  Future<void> _loadAnalysisResult() async {
+    try {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+
+      // Stream으로 실시간 업데이트 받기
+      _firebaseService
+          .watchMealRecord(widget.userId, widget.mealRecord.id) // userId 추가
+          .listen(
+        (updatedRecord) {
+          Logger.log('분석 결과 업데이트: ${updatedRecord.toString()}');
+          if (mounted) {
+            setState(() {
+              _currentRecord = updatedRecord;
+              _isLoading = false;
+            });
+          }
+        },
+        onError: (error) {
+          Logger.log('분석 결과 스트림 에러: $error');
+          if (mounted) {
+            setState(() {
+              _error = '데이터 로드 중 오류가 발생했습니다';
+              _isLoading = false;
+            });
+          }
+        },
+      );
+    } catch (e) {
+      Logger.log('분석 결과 로드 실패: $e');
+      if (mounted) {
+        setState(() {
+          _error = '분석 결과를 불러오는 중 오류가 발생했습니다';
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _retryAnalysis() async {
+    try {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+
+      await _firebaseService.updateMealRecordStatus(
+        widget.userId,
+        widget.mealRecord.id,
+        status: 'pending',
+      );
+
+      _loadAnalysisResult();
+    } catch (e) {
+      Logger.log('재분석 시도 실패: $e');
+      if (mounted) {
+        setState(() {
+          _error = '재분석 시도 중 오류가 발생했습니다';
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('재분석 시도 중 오류가 발생했습니다'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _shareResult() {
+    if (_currentRecord == null) return;
+
+    final analysisResult = _currentRecord?.analysisResult;
+    if (analysisResult == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('공유할 분석 결과가 없습니다')),
+      );
+      return;
+    }
+
+    final dateFormatter = DateFormat('yyyy/MM/dd');
+    final formattedDate = dateFormatter.format(_currentRecord!.timestamp);
+
+    final foodItems = analysisResult['foodItems'] as List<dynamic>? ?? [];
+    final foodList = foodItems.map((item) => item['name']).join(', ');
+
+    final shareText = '''
+📊 식사 분석 결과
+
+📅 날짜: $formattedDate
+🕒 시간: ${_getMealTypeText(_currentRecord!.mealType)}
+
+🍽️ 음식: $foodList
+
+#CatchSpike #식사기록 #건강관리
+''';
+
+    Share.share(shareText);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          '식사 분석 결과',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        backgroundColor: Theme.of(context).primaryColor,
+        iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          if (_currentRecord?.status == 'completed')
+            IconButton(
+              icon: const Icon(Icons.share, color: Colors.white),
+              onPressed: _shareResult,
+            ),
+        ],
+      ),
+      body: SafeArea(
+        child: _buildContent(),
+      ),
+    );
+  }
+
+  Widget _buildContent() {
+    if (_isLoading) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('분석 결과를 불러오는 중...'),
+          ],
+        ),
+      );
+    }
+
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(_error!),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _retryAnalysis,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).primaryColor,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('다시 시도'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_currentRecord == null) {
+      return const Center(
+        child: Text('데이터를 찾을 수 없습니다'),
+      );
+    }
+
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 이미지 섹션
+          AspectRatio(
+            aspectRatio: 16 / 9,
+            child: Image.network(
+              _currentRecord!.imageUrl,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return Container(
+                  color: Colors.grey[200],
+                  child: const Center(
+                    child: Text('이미지를 불러올 수 없습니다'),
+                  ),
+                );
+              },
+            ),
+          ),
+
+          // 식사 정보 섹션
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 식사 시간 및 날짜
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).primaryColor,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        _getMealTypeText(_currentRecord!.mealType),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      DateFormat('yyyy/MM/dd')
+                          .format(_currentRecord!.timestamp),
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 16,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                // 분석 상태에 따른 내용 표시
+                if (_currentRecord!.status == 'completed')
+                  _buildAnalysisResult()
+                else if (_currentRecord!.status == 'analyzing')
+                  const Center(
+                    child: Column(
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 16),
+                        Text('이미지 분석 중...'),
+                      ],
+                    ),
+                  )
+                else if (_currentRecord!.status == 'failed')
+                  Center(
+                    child: Column(
+                      children: [
+                        const Text('분석에 실패했습니다'),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: _retryAnalysis,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Theme.of(context).primaryColor,
+                            foregroundColor: Colors.white,
+                          ),
+                          child: const Text('다시 시도'),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAnalysisResult() {
+    final analysisResult = _currentRecord?.analysisResult;
+    if (analysisResult == null) {
+      return const Center(
+        child: Text('분석 결과가 없습니다'),
+      );
+    }
+
+    final foodItems = analysisResult['foodItems'] as List<dynamic>? ?? [];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '분석 결과',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // 음식 목록
+        const Text(
+          '음식',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          foodItems.isEmpty
+              ? '분석된 음식이 없습니다'
+              : foodItems.map((item) => item['name']).join(', '),
+          style: const TextStyle(fontSize: 16),
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  String _getMealTypeText(String mealType) {
+    switch (mealType.toLowerCase()) {
       case 'breakfast':
         return '아침';
       case 'lunch':
@@ -25,280 +353,7 @@ class MealAnalysisScreen extends StatelessWidget {
       case 'snack':
         return '간식';
       default:
-        return '식사';
+        return mealType;
     }
-  }
-
-  Future<void> _shareMealAnalysis(BuildContext context) async {
-    try {
-      final foods = mealRecord.analysisResult?['foods'] as List<dynamic>?;
-      final nutrition = mealRecord.analysisResult?['nutrition'];
-
-      final text = '''
-${_formatDateTime(mealRecord.timestamp)}
-${_getMealTypeText(mealRecord.mealType)} 식사 분석 결과
-
-총 칼로리: ${nutrition?['calories']} kcal
-
-분석된 음식:
-${foods?.map((food) => '• ${food['name']} (${food['calories']}kcal)').join('\n')}
-
-영양 정보:
-탄수화물: ${nutrition?['carbs']}g
-단백질: ${nutrition?['protein']}g
-지방: ${nutrition?['fat']}g
-
-${mealRecord.analysisResult?['recommendations'] ?? ''}
-      ''';
-
-      await Share.share(text);
-    } catch (e) {
-      Logger.log('식사 분석 공유 실패: $e');
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('공유하기에 실패했습니다.')),
-        );
-      }
-    }
-  }
-
-  String _formatDateTime(DateTime dateTime) {
-    return '${dateTime.year}년 ${dateTime.month}월 ${dateTime.day}일 ${_getMealTypeText(mealRecord.mealType)}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('식사 분석 결과'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.share),
-            onPressed: () => _shareMealAnalysis(context),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildImageSection(context),
-              _buildAnalysisSection(),
-              _buildRecommendationSection(),
-              _buildActionButtons(context),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildImageSection(BuildContext context) {
-    return Stack(
-      children: [
-        Image.network(
-          mealRecord.imageUrl,
-          width: double.infinity,
-          height: 250,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            Logger.log('이미지 로드 실패: $error');
-            return Container(
-              width: double.infinity,
-              height: 250,
-              color: Colors.grey[200],
-              child: const Icon(Icons.error_outline, size: 50),
-            );
-          },
-        ),
-        Positioned(
-          bottom: 16,
-          left: 16,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Theme.of(context).primaryColor,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              _getMealTypeText(mealRecord.mealType),
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAnalysisSection() {
-    final nutrition = mealRecord.analysisResult?['nutrition'];
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '영양 정보',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildNutritionRow(
-                      '칼로리', '${nutrition?['calories'] ?? 0} kcal'),
-                  _buildNutritionRow('탄수화물', '${nutrition?['carbs'] ?? 0}g'),
-                  _buildNutritionRow('단백질', '${nutrition?['protein'] ?? 0}g'),
-                  _buildNutritionRow('지방', '${nutrition?['fat'] ?? 0}g'),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          _buildFoodList(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNutritionRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label),
-          Text(
-            value,
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFoodList() {
-    final foods = mealRecord.analysisResult?['foods'] as List<dynamic>?;
-    if (foods == null || foods.isEmpty) return const SizedBox.shrink();
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '분석된 음식',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 16),
-            ...foods.map((food) => _buildFoodItem(food)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFoodItem(Map<String, dynamic> food) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: Text(
-              food['name'] as String,
-              style: const TextStyle(fontSize: 16),
-            ),
-          ),
-          Text(
-            '${food['calories']}kcal',
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRecommendationSection() {
-    final recommendations = mealRecord.analysisResult?['recommendations'];
-    if (recommendations == null) return const SizedBox.shrink();
-
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '영양 추천사항',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                recommendations.toString(),
-                style: const TextStyle(
-                  fontSize: 16,
-                  height: 1.5,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionButtons(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          Expanded(
-            child: ElevatedButton.icon(
-              onPressed: () => _shareMealAnalysis(context),
-              icon: const Icon(Icons.share),
-              label: const Text('공유하기'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Theme.of(context).primaryColor,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: () => Navigator.of(context).pop(),
-              icon: const Icon(Icons.add_photo_alternate),
-              label: const Text('새로운 분석'),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }

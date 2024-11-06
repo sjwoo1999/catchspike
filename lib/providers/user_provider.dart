@@ -1,10 +1,9 @@
-// lib/providers/user_provider.dart
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../models/users.dart';
+import '../models/onboarding_status.dart';
 import '../services/firebase_service.dart';
-import '../utils/logger.dart';
 
-class UserProvider extends ChangeNotifier {
+class UserProvider with ChangeNotifier {
   User? _user;
   bool _isLoading = false;
   final FirebaseService _firebaseService = FirebaseService();
@@ -12,52 +11,82 @@ class UserProvider extends ChangeNotifier {
   User? get user => _user;
   bool get isLoading => _isLoading;
 
-  Future<void> initializeUser() async {
-    setLoading(true); // 사용자 초기화 시작 시 로딩 상태 true로 설정
-    try {
-      final currentUser = await _firebaseService.getCurrentUser();
-      if (currentUser != null) {
-        _user = currentUser;
-        Logger.log('사용자 정보 초기화 성공: ${currentUser.id}');
-      } else {
-        Logger.log('사용자 정보 없음');
-      }
-    } catch (e) {
-      Logger.log('사용자 정보 초기화 실패: $e');
-    } finally {
-      setLoading(false); // 사용자 정보 초기화 완료 후 로딩 상태 false로 설정
+  void setLoading(bool value) {
+    if (_isLoading != value) {
+      _isLoading = value;
+      notifyListeners();
     }
   }
 
-  Future<void> setUser(User user) async {
+  void setUser(User? user) {
+    if (_user?.id != user?.id) {
+      _user = user;
+      notifyListeners();
+    }
+  }
+
+  Future<void> initializeUser() async {
+    if (_isLoading) return;
+
     try {
       setLoading(true);
-      await _firebaseService.saveUser(user);
-      _user = user;
-      Logger.log('사용자 정보 업데이트 성공: ${user.id}');
-      notifyListeners();
+      final currentUser = await _firebaseService.getCurrentUser();
+
+      if (currentUser != null && _user?.id != currentUser.id) {
+        _user = currentUser;
+        notifyListeners();
+      }
     } catch (e) {
-      Logger.log('사용자 정보 업데이트 실패: $e');
+      debugPrint('사용자 초기화 오류: $e');
       rethrow;
     } finally {
       setLoading(false);
     }
   }
 
-  void setLoading(bool loading) {
-    if (_isLoading != loading) {
-      _isLoading = loading;
-      notifyListeners();
+  Future<void> updateUser(User user) async {
+    try {
+      await _firebaseService.saveUser(user);
+      setUser(user);
+    } catch (e) {
+      debugPrint('사용자 업데이트 오류: $e');
+      rethrow;
     }
   }
 
   Future<void> clearUser() async {
+    _user = null;
+    notifyListeners();
+  }
+
+  bool get isAuthenticated => _user != null;
+
+  bool get hasCompletedOnboarding {
+    return _user?.onboarding?.isCompleted ?? false;
+  }
+
+  Future<void> updateOnboardingStatus({
+    required bool isCompleted,
+  }) async {
+    if (_user == null) return;
+
     try {
-      _user = null;
-      Logger.log('사용자 정보 초기화 완료');
+      await _firebaseService.updateUserOnboardingStatus(
+        userId: _user!.id,
+        isCompleted: isCompleted,
+        completedAt: DateTime.now(),
+      );
+
+      _user = _user!.copyWith(
+        onboarding: OnboardingStatus(
+          isCompleted: isCompleted,
+          completedAt: DateTime.now(),
+        ),
+      );
+
       notifyListeners();
     } catch (e) {
-      Logger.log('사용자 정보 초기화 실패: $e');
+      debugPrint('온보딩 상태 업데이트 오류: $e');
       rethrow;
     }
   }

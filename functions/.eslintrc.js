@@ -1,28 +1,30 @@
 module.exports = {
-  env: {
-    es6: true,
-    node: true,
-  },
-  parserOptions: {
-    "ecmaVersion": 2018,
-  },
-  extends: [
-    "eslint:recommended",
-    "google",
-  ],
-  rules: {
-    "no-restricted-globals": ["error", "name", "length"],
-    "prefer-arrow-callback": "error",
-    "quotes": ["error", "double", {"allowTemplateLiterals": true}],
-  },
-  overrides: [
-    {
-      files: ["**/*.spec.*"],
-      env: {
-        mocha: true,
-      },
-      rules: {},
+    root: true,
+    env: {
+      es2022: true,
+      node: true,
+      commonjs: true
     },
-  ],
-  globals: {},
-};
+    parserOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'commonjs'
+    },
+    extends: ['eslint:recommended'],
+    rules: {
+      'no-unused-vars': 'warn',
+      'no-undef': 'error',
+      'semi': ['error', 'always'],
+      'quotes': ['error', 'single'],
+      'no-trailing-spaces': 'error',
+      'object-curly-spacing': ['error', 'always'],
+      'comma-dangle': ['error', 'never']
+    },
+    globals: {
+      'require': 'readonly',
+      'module': 'readonly',
+      'exports': 'readonly',
+      'process': 'readonly',
+      '__dirname': 'readonly',
+      '__filename': 'readonly'
+    }
+  };

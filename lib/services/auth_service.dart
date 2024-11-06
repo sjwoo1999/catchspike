@@ -1,3 +1,5 @@
+// lib/services/auth_service.dart
+
 import 'package:flutter/material.dart';
 import 'package:catchspike/models/users.dart' as app_user;
 import 'package:catchspike/providers/user_provider.dart';
@@ -21,9 +23,9 @@ class AuthService {
   }
 
   void _logEnvironmentVariables() {
-    final functionUrl = dotenv.env['FIREBASE_FUNCTION_URL'];
+    final customTokenUrl = dotenv.env['GET_CUSTOM_TOKEN_URL'];
     final googleApiKey = dotenv.env['GOOGLE_API_KEY'];
-    Logger.log("현재 Function URL 설정: $functionUrl");
+    Logger.log("현재 Custom Token URL 설정: $customTokenUrl");
     Logger.log("현재 Google API Key 설정: $googleApiKey");
   }
 
@@ -37,11 +39,10 @@ class AuthService {
         Provider.of<UserProvider>(context, listen: false).setLoading(true);
       }
 
-      // Check if kakao token exists first
       if (!await kakao.AuthApi.instance.hasToken()) {
         throw kakao.KakaoClientException(
           kakao.ClientErrorCause.tokenNotFound,
-          'Failed to find Kakao authentication token', // 두 번째 필수 인자 추가
+          'Failed to find Kakao authentication token',
         );
       }
 
@@ -99,14 +100,14 @@ class AuthService {
   Future<String> getFirebaseCustomToken(
       String id, String email, String nickname, String profileImageUrl) async {
     try {
-      final functionUrl = dotenv.env['FIREBASE_FUNCTION_URL'];
-      Logger.log("Function URL 확인: $functionUrl");
+      final customTokenUrl = dotenv.env['GET_CUSTOM_TOKEN_URL'];
+      Logger.log("Custom Token URL 확인: $customTokenUrl");
 
-      if (functionUrl == null || functionUrl.isEmpty) {
-        throw Exception('Function URL이 설정되지 않았습니다. (.env 파일을 확인해주세요)');
+      if (customTokenUrl == null || customTokenUrl.isEmpty) {
+        throw Exception('Custom Token URL이 설정되지 않았습니다. (.env 파일을 확인해주세요)');
       }
 
-      final url = Uri.parse(functionUrl);
+      final url = Uri.parse(customTokenUrl);
       Logger.log("토큰 요청 URL: $url");
 
       final requestBody = {
