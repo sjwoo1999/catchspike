@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
 import '../../models/meal_record.dart';
 import '../../services/firebase_service.dart';
 import '../../utils/logger.dart';
@@ -7,12 +8,12 @@ import 'package:intl/intl.dart';
 
 class MealAnalysisScreen extends StatefulWidget {
   final MealRecord mealRecord;
-  final String userId; // userId 추가
+  final String userId;
 
   const MealAnalysisScreen({
     Key? key,
     required this.mealRecord,
-    required this.userId, // userId 추가
+    required this.userId,
   }) : super(key: key);
 
   @override
@@ -38,9 +39,8 @@ class _MealAnalysisScreenState extends State<MealAnalysisScreen> {
         _error = null;
       });
 
-      // Stream으로 실시간 업데이트 받기
       _firebaseService
-          .watchMealRecord(widget.userId, widget.mealRecord.id) // userId 추가
+          .watchMealRecord(widget.userId, widget.mealRecord.id)
           .listen(
         (updatedRecord) {
           Logger.log('분석 결과 업데이트: ${updatedRecord.toString()}');
@@ -206,7 +206,6 @@ class _MealAnalysisScreenState extends State<MealAnalysisScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 이미지 섹션
           AspectRatio(
             aspectRatio: 16 / 9,
             child: Image.network(
@@ -222,14 +221,11 @@ class _MealAnalysisScreenState extends State<MealAnalysisScreen> {
               },
             ),
           ),
-
-          // 식사 정보 섹션
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 식사 시간 및 날짜
                 Row(
                   children: [
                     Container(
@@ -261,8 +257,6 @@ class _MealAnalysisScreenState extends State<MealAnalysisScreen> {
                   ],
                 ),
                 const SizedBox(height: 24),
-
-                // 분석 상태에 따른 내용 표시
                 if (_currentRecord!.status == 'completed')
                   _buildAnalysisResult()
                 else if (_currentRecord!.status == 'analyzing')
@@ -308,7 +302,8 @@ class _MealAnalysisScreenState extends State<MealAnalysisScreen> {
       );
     }
 
-    final foodItems = analysisResult['foodItems'] as List<dynamic>? ?? [];
+    final nutrients =
+        analysisResult['nutrition']?['nutrients'] as Map<String, double>? ?? {};
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -321,21 +316,27 @@ class _MealAnalysisScreenState extends State<MealAnalysisScreen> {
           ),
         ),
         const SizedBox(height: 16),
-
-        // 음식 목록
         const Text(
-          '음식',
+          '영양 성분',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
           ),
         ),
         const SizedBox(height: 8),
-        Text(
-          foodItems.isEmpty
-              ? '분석된 음식이 없습니다'
-              : foodItems.map((item) => item['name']).join(', '),
-          style: const TextStyle(fontSize: 16),
+        SizedBox(
+          height: 200,
+          child: PieChart(
+            PieChartData(
+              sections: nutrients.entries.map((entry) {
+                return PieChartSectionData(
+                  title: '${entry.key}: ${entry.value}g',
+                  value: entry.value,
+                  radius: 60,
+                );
+              }).toList(),
+            ),
+          ),
         ),
         const SizedBox(height: 24),
       ],

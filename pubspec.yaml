@@ -41,6 +41,7 @@ dependencies:
   kakao_flutter_sdk_common: ^1.9.5
   path: any  # 경로 처리를 위해 추가
   connectivity_plus: ^6.1.0
+  fl_chart: ^0.69.0
 
 dev_dependencies:
   flutter_test:

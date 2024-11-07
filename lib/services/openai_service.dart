@@ -2,16 +2,23 @@
 
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:async'; // TimeoutException을 사용하기 위해 추가
 import '../firebase/config/firebase_config.dart';
 import '../utils/logger.dart';
+import '../utils/exceptions.dart'; // OpenAIException 임포트 추가
 
 class OpenAIService {
-  final String _baseUrl = 'https://api.openai.com/v1/chat/completions';
-  final String _apiKey;
+  static const String _baseUrl = 'https://api.openai.com/v1/chat/completions';
+  static const Duration _defaultTimeout = Duration(seconds: 30);
 
-  OpenAIService() : _apiKey = FirebaseConfig.openAiKey {
-    if (_apiKey.isEmpty) {
-      throw Exception('OpenAI API 키가 설정되지 않았습니다.');
+  final String _apiKey;
+  final String _model;
+
+  OpenAIService({String? model})
+      : _apiKey = FirebaseConfig.openAiKey,
+        _model = model ?? FirebaseConfig.openAiModel {
+    if (!FirebaseConfig.isOpenAIConfigured) {
+      throw const OpenAIException('OpenAI 설정이 완료되지 않았습니다.');
     }
   }
 
@@ -20,6 +27,10 @@ class OpenAIService {
     required String mealType,
   }) async {
     try {
+      if (foodItems.isEmpty) {
+        throw const OpenAIException('분석할 음식 항목이 없습니다.');
+      }
+
       final messages = [
         {
           "role": "system",
@@ -54,30 +65,51 @@ class OpenAIService {
         }
       ];
 
-      final response = await http.post(
-        Uri.parse(_baseUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_apiKey',
-        },
-        body: jsonEncode({
-          'model': 'gpt-4o',
-          'messages': messages,
-          'temperature': 0.7,
-          'response_format': {'type': 'json_object'},
-        }),
-      );
+      final response = await http
+          .post(
+            Uri.parse(_baseUrl),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $_apiKey',
+            },
+            body: jsonEncode({
+              'model': _model,
+              'messages': messages,
+              'temperature': 0.7,
+              'max_tokens': 1000,
+            }),
+          )
+          .timeout(_defaultTimeout);
 
       if (response.statusCode != 200) {
-        Logger.log('GPT 응답 오류: ${response.body}');
-        throw Exception('영양 분석 요청 실패: ${response.statusCode}');
+        final error = jsonDecode(response.body);
+        throw OpenAIException(
+          error['error']['message'] ?? '영양 분석 요청 실패',
+          code: error['error']['code'],
+        );
       }
 
       final data = jsonDecode(response.body);
-      return jsonDecode(data['choices'][0]['message']['content']);
+      final content = data['choices'][0]['message']['content'];
+
+      // JSON 파싱 시도
+      Map<String, dynamic> parsedResponse;
+      try {
+        parsedResponse = jsonDecode(content);
+      } catch (e) {
+        throw OpenAIException(
+          'OpenAI 응답을 JSON으로 변환하는 데 실패했습니다. 응답 내용: $content',
+        );
+      }
+
+      return parsedResponse;
+    } on TimeoutException {
+      throw const OpenAIException('요청 시간이 초과되었습니다.');
+    } on OpenAIException {
+      rethrow;
     } catch (e) {
       Logger.log('OpenAI 서비스 오류: $e');
-      throw Exception('영양 분석 중 오류가 발생했습니다');
+      throw OpenAIException('영양 분석 중 오류가 발생했습니다: $e');
     }
   }
 }

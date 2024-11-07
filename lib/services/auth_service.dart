@@ -24,9 +24,9 @@ class AuthService {
 
   void _logEnvironmentVariables() {
     final customTokenUrl = dotenv.env['GET_CUSTOM_TOKEN_URL'];
-    final googleApiKey = dotenv.env['GOOGLE_API_KEY'];
+    //final googleApiKey = dotenv.env['GOOGLE_API_KEY'];
     Logger.log("현재 Custom Token URL 설정: $customTokenUrl");
-    Logger.log("현재 Google API Key 설정: $googleApiKey");
+    //Logger.log("현재 Google API Key 설정: $googleApiKey");
   }
 
   final firebase.FirebaseAuth _firebaseAuth = firebase.FirebaseAuth.instance;
