@@ -1,4 +1,3 @@
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -7,10 +6,13 @@ import 'package:catchspike/services/meal_analysis_service.dart';
 import 'package:catchspike/models/meal_record.dart';
 import 'package:catchspike/utils/logger.dart';
 import 'dart:io';
+import 'dart:convert'; // for base64 encoding
+import '../meal/meal_analysis_screen.dart';
+
+// Components import
 import 'components/meal_image_picker.dart';
 import 'components/meal_type_selector.dart';
 import 'components/analysis_status.dart';
-import 'meal_analysis_screen.dart';
 
 class MealRecordScreen extends StatefulWidget {
   const MealRecordScreen({super.key});
@@ -33,14 +35,15 @@ class _MealRecordScreenState extends State<MealRecordScreen> {
       SnackBar(
         content: Text(message),
         backgroundColor: Colors.red,
-        duration: const Duration(seconds: 5), // 에러 메시지는 좀 더 오래 보여줌
+        duration: const Duration(seconds: 5),
       ),
     );
   }
 
-  void _updateAnalysisStatus(String status) {
+  void _updateLoadingStatus({required bool isLoading, String status = ''}) {
     if (mounted) {
       setState(() {
+        _isLoading = isLoading;
         _analysisStatus = status;
       });
     }
@@ -67,16 +70,23 @@ class _MealRecordScreenState extends State<MealRecordScreen> {
     }
   }
 
+  Future<String> _convertImageToBase64(File image) async {
+    try {
+      final bytes = await image.readAsBytes();
+      return base64Encode(bytes);
+    } catch (e) {
+      Logger.log('이미지 변환 실패: $e');
+      throw Exception('이미지 변환 중 오류 발생');
+    }
+  }
+
   Future<void> _analyzeMealAndSave() async {
     if (_selectedImage == null || _selectedTime.isEmpty) {
       _showErrorSnackBar('이미지와 식사 시간을 모두 선택해주세요');
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-      _analysisStatus = '이미지 업로드 중...';
-    });
+    _updateLoadingStatus(isLoading: true, status: '이미지 업로드 중...');
 
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -85,7 +95,7 @@ class _MealRecordScreenState extends State<MealRecordScreen> {
       final userId = user.uid;
 
       // 1. 이미지 업로드
-      _updateAnalysisStatus('이미지 업로드 중...');
+      _updateLoadingStatus(isLoading: true, status: '이미지 업로드 중...');
       final imageUrl =
           await _firebaseService.uploadMealImage(_selectedImage!, userId);
 
@@ -97,44 +107,38 @@ class _MealRecordScreenState extends State<MealRecordScreen> {
         timestamp: DateTime.now(),
       );
 
-      // 3. 이미지 분석 및 저장
-      _updateAnalysisStatus('음식 분석 중...');
+      // 3. 이미지 분석 (YOLOv7 및 OpenAI Assistant)
+      _updateLoadingStatus(isLoading: true, status: '음식 분석 중...');
       try {
-        await _analysisService.analyzeAndSaveMealImage(
-          userId, // userId를 첫 번째 인자로 변경
-          mealRecord, // MealRecord 객체를 전달
-        );
+        final File imageFile = _selectedImage!;
+        final Map<String, dynamic> yoloResult =
+            await _analysisService.analyzeMealImageUsingYOLOv7(imageFile);
+        final String base64Image = await _convertImageToBase64(imageFile);
+        final Map<String, dynamic> openAIResult =
+            await _analysisService.analyzeMealImageUsingAssistant(base64Image);
 
         if (!mounted) return;
+
+        // 반환된 결과가 비어있는지 체크 후 에러 처리
+        if (yoloResult.isEmpty || openAIResult.isEmpty) {
+          throw Exception('이미지 분석에 실패했습니다.');
+        }
+
+        final Map<String, dynamic> analysisResult =
+            _analysisService.mergeAnalysisResults(yoloResult, openAIResult);
 
         // 4. 분석 결과 화면으로 이동
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (context) => MealAnalysisScreen(
               mealRecord: mealRecord,
-              userId: userId,
+              analysisResult: analysisResult,
             ),
           ),
         );
       } catch (e) {
         Logger.log('식사 분석 실패: $e');
-        if (e is FirebaseFunctionsException) {
-          switch (e.code) {
-            case 'not-found':
-              _showErrorSnackBar('Firebase 함수를 찾을 수 없습니다. 관리자에게 문의하세요.');
-              break;
-            case 'internal':
-              _showErrorSnackBar('서버 내부 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
-              break;
-            case 'unavailable':
-              _showErrorSnackBar('서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요.');
-              break;
-            default:
-              _showErrorSnackBar('분석 중 오류가 발생했습니다: ${e.message}');
-          }
-        } else {
-          _showErrorSnackBar('분석 중 오류가 발생했습니다. 다시 시도해주세요.');
-        }
+        _showErrorSnackBar('분석 중 오류가 발생했습니다. 다시 시도해주세요.');
       }
     } catch (e) {
       Logger.log('처리 중 오류 발생: $e');
@@ -142,12 +146,7 @@ class _MealRecordScreenState extends State<MealRecordScreen> {
         _showErrorSnackBar('처리 중 오류가 발생했습니다. 다시 시도해주세요.');
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _analysisStatus = '';
-        });
-      }
+      _updateLoadingStatus(isLoading: false);
     }
   }
 

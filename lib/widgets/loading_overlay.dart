@@ -1,6 +1,3 @@
-// lib/widgets/loading_indicator.dart
-// 기존 커스텀 로딩 인디케이터 유지 (변경 없음)
-
 // lib/widgets/loading_overlay.dart
 import 'package:flutter/material.dart';
 import 'loading_indicator.dart';

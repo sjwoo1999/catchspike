@@ -1,79 +1,132 @@
-import 'package:catchspike/utils/logger.dart';
+import 'dart:io'; // For Directory
+import 'package:catchspike/widgets/custom_drawer.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart'; // For kReleaseMode
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:kakao_flutter_sdk_common/kakao_flutter_sdk_common.dart'
     as kakao_sdk;
 import 'package:provider/provider.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'widgets/loading_indicator.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'firebase/config/firebase_config.dart';
-import 'firebase_options.dart';
-import 'screens/home/home_screen.dart';
-import 'screens/report/report_screen.dart';
-import 'screens/community/community_screen.dart';
-import 'screens/achievement/achievement_screen.dart';
-import 'screens/onboarding/onboarding_screen.dart';
-import 'widgets/custom_drawer.dart';
 import 'providers/user_provider.dart';
+import 'screens/onboarding/onboarding_screen.dart';
+import 'screens/home/home_screen.dart';
 import 'utils/global_keys.dart';
 
 Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // 1. 실행 환경에 따른 환경 파일 설정
+  final environment = const String.fromEnvironment(
+    'ENV',
+    defaultValue: 'development', // 기본값은 개발 환경
+  );
+  final fileName = '.env.$environment';
+  print("📂 로드할 환경 파일: $fileName");
+
   try {
-    WidgetsFlutterBinding.ensureInitialized();
+    await dotenv.load(fileName: fileName);
+    print("✅ 환경 파일 로드 성공: $fileName");
+    dotenv.env.forEach((key, value) {
+      print("🔑 $key: $value");
+    });
+  } catch (e) {
+    print("❌ 환경 파일 로드 실패: $e");
+    rethrow;
+  }
 
-    // 1. 환경 변수 로드
-    await dotenv.load();
-    Logger.log("✅ .env 파일 로드 완료");
+  // 2. 현재 실행된 환경 출력
+  final firebaseEnv = dotenv.env['FIREBASE_ENV'] ?? 'UNKNOWN';
+  print("🌍 실행된 환경: ${firebaseEnv.toUpperCase()}");
 
-    // 2. 환경 변수 검증
-    FirebaseConfig.validateConfig();
+  // 3. 환경 변수 검증
+  _validateEnvironmentVariables();
 
-    // 3. Firebase 초기화
-    if (Firebase.apps.isEmpty) {
+  // 4. Firebase 초기화
+  if (Firebase.apps.isEmpty) {
+    try {
       await Firebase.initializeApp(
         options: FirebaseConfig.currentPlatform,
       );
-      Logger.log("✅ Firebase 초기화 완료");
+      print("✅ Firebase 초기화 완료");
+    } catch (e) {
+      print("❌ Firebase 초기화 실패: $e");
+      rethrow;
     }
 
-    // 4. Kakao SDK 초기화
-    kakao_sdk.KakaoSdk.init(
-      nativeAppKey: FirebaseConfig.kakaoNativeKey,
-      javaScriptAppKey: FirebaseConfig.kakaoJavaScriptKey,
-    );
-    Logger.log("✅ Kakao SDK 초기화 완료");
+    // Firebase Emulator 설정 (개발 환경일 때만)
+    if (environment == 'development' &&
+        dotenv.env['USE_FIREBASE_EMULATOR'] == 'true') {
+      print("⚙️ 개발 환경: Firebase Emulator 설정 중...");
 
-    runApp(
-      MultiProvider(
-        providers: [
-          ChangeNotifierProvider<UserProvider>(
-            create: (_) => UserProvider(),
-          ),
-        ],
-        child: const MyApp(),
-      ),
-    );
-  } catch (e, stackTrace) {
-    Logger.log("❌ 앱 초기화 실패:");
-    Logger.log("오류 내용: $e");
-    Logger.log("스택 트레이스: $stackTrace");
-    rethrow;
+      // Firestore Emulator 설정
+      FirebaseFirestore.instance.settings = Settings(
+        host:
+            '${dotenv.env['FIREBASE_EMULATOR_HOST']}:${dotenv.env['FIREBASE_FIRESTORE_PORT'] ?? '8080'}',
+        sslEnabled: false,
+        persistenceEnabled: false,
+      );
+      print("🔥 Firestore Emulator 설정 완료");
+
+      // Functions Emulator 설정
+      FirebaseFunctions.instance.useFunctionsEmulator(
+        dotenv.env['FIREBASE_EMULATOR_HOST'] ?? '127.0.0.1',
+        int.parse(dotenv.env['FIREBASE_FUNCTIONS_PORT'] ?? '5001'),
+      );
+      print("🔥 Functions Emulator 설정 완료");
+
+      // Storage Emulator 설정
+      FirebaseStorage.instance.useStorageEmulator(
+        dotenv.env['FIREBASE_EMULATOR_HOST'] ?? '127.0.0.1',
+        int.parse(dotenv.env['FIREBASE_STORAGE_PORT'] ?? '9199'),
+      );
+      print("🔥 Storage Emulator 설정 완료");
+    }
   }
+
+  // 6. Kakao SDK 초기화
+  kakao_sdk.KakaoSdk.init(
+    nativeAppKey: FirebaseConfig.kakaoNativeKey,
+    javaScriptAppKey: FirebaseConfig.kakaoJavaScriptKey,
+  );
+  print("✅ Kakao SDK 초기화 완료");
+
+  // 7. 앱 실행
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => UserProvider()),
+      ],
+      child: const MyApp(),
+    ),
+  );
 }
 
+// 환경 변수 검증 함수
 void _validateEnvironmentVariables() {
   final requiredEnvVars = [
-    'KAKAO_NATIVE_APP_KEY',
-    'OPENAI_API_KEY',
-    'ANALYZE_FOOD_IMAGE_URL'
+    'FIREBASE_ENV',
+    'USE_FIREBASE_EMULATOR',
+    'FIREBASE_EMULATOR_HOST',
+    'FIREBASE_FIRESTORE_PORT', // Updated key
+    'FIREBASE_FUNCTIONS_PORT', // Updated key
+    'FIREBASE_STORAGE_PORT', // Updated key
+    'FIREBASE_ANDROID_API_KEY',
+    'FIREBASE_IOS_API_KEY',
+    'GET_CUSTOM_TOKEN_URL',
   ];
 
   for (final envVar in requiredEnvVars) {
     if (dotenv.env[envVar]?.isEmpty ?? true) {
-      throw Exception('Required environment variable $envVar is not set');
+      throw Exception('⚠️ Required environment variable $envVar is not set');
     }
   }
+
+  print("✅ 모든 필수 환경 변수가 설정되었습니다.");
 }
 
 class MyApp extends StatelessWidget {
@@ -94,17 +147,8 @@ class MyApp extends StatelessWidget {
       ),
       initialRoute: '/', // 초기 라우트 설정
       routes: {
-        '/': (context) => Consumer<UserProvider>(
-              builder: (context, userProvider, child) {
-                return userProvider.user == null
-                    ? const OnboardingScreen()
-                    : const MainScreen();
-              },
-            ),
-        '/home': (context) => const MainScreen(initialIndex: 0),
-        '/report': (context) => const MainScreen(initialIndex: 1),
-        '/community': (context) => const MainScreen(initialIndex: 2),
-        '/achievement': (context) => const MainScreen(initialIndex: 3),
+        '/': (context) => const OnboardingScreen(),
+        '/home': (context) => const HomeScreen(),
       },
       debugShowCheckedModeBanner: false,
       scaffoldMessengerKey: scaffoldMessengerKey,
@@ -128,13 +172,15 @@ class _MainScreenState extends State<MainScreen> {
   void initState() {
     super.initState();
     _selectedIndex = widget.initialIndex ?? 0;
+
+    // 현재 실행된 환경 로깅
+    final environment = dotenv.env['FIREBASE_ENV'] ?? 'production';
+    print("📱 MainScreen 실행 중 - 환경: ${environment.toUpperCase()}");
   }
 
   final List<Widget> _screens = [
     const HomeScreen(),
-    const ReportScreen(),
-    const CommunityScreen(),
-    AchievementsScreen(),
+    const OnboardingScreen(), // Placeholder
   ];
 
   void _onItemTapped(int index) {
@@ -172,49 +218,23 @@ class _MainScreenState extends State<MainScreen> {
         children: _screens,
       ),
       endDrawer: const CustomDrawer(),
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black12,
-              offset: Offset(0, -1),
-              blurRadius: 4,
-            ),
-          ],
-        ),
-        child: BottomNavigationBar(
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              activeIcon: Icon(Icons.home),
-              label: '홈',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.insert_chart_outlined),
-              activeIcon: Icon(Icons.insert_chart),
-              label: '리포트',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.people_outline),
-              activeIcon: Icon(Icons.people),
-              label: '커뮤니티',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.emoji_events_outlined),
-              activeIcon: Icon(Icons.emoji_events),
-              label: '성과',
-            ),
-          ],
-          currentIndex: _selectedIndex,
-          selectedItemColor: const Color(0xFFE30547),
-          unselectedItemColor: Colors.grey,
-          type: BottomNavigationBarType.fixed,
-          showUnselectedLabels: true,
-          selectedFontSize: 12,
-          unselectedFontSize: 12,
-          onTap: _onItemTapped,
-          elevation: 0,
-        ),
+      bottomNavigationBar: BottomNavigationBar(
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home_outlined),
+            activeIcon: Icon(Icons.home),
+            label: '홈',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.insert_chart_outlined),
+            activeIcon: Icon(Icons.insert_chart),
+            label: '리포트',
+          ),
+        ],
+        currentIndex: _selectedIndex,
+        selectedItemColor: const Color(0xFFE30547),
+        unselectedItemColor: Colors.grey,
+        onTap: _onItemTapped,
       ),
     );
   }

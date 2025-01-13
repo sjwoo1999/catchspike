@@ -1,229 +1,331 @@
-// index.js
+const { initializeApp, cert } = require("firebase-admin/app");
+const { getFirestore } = require("firebase-admin/firestore");
+const { onRequest } = require("firebase-functions/v2/https");
+const { setGlobalOptions } = require("firebase-functions/v2");
+const { getAuth } = require("firebase-admin/auth");
+const { Storage } = require("@google-cloud/storage");
+const axios = require("axios");
+require("dotenv").config();
 
-const { initializeApp, cert } = require('firebase-admin/app');
-const { getFirestore } = require('firebase-admin/firestore');
-const { onCall, onRequest } = require('firebase-functions/v2/https');
-const { setGlobalOptions } = require('firebase-functions/v2');
-const { ClarifaiStub, grpc } = require('clarifai-nodejs-grpc');
-const { getAuth } = require('firebase-admin/auth');
-require('dotenv').config();
-
-// 서비스 계정 초기화
-const serviceAccount = require('./serviceAccountKey.json');
-
-// Firebase Admin 초기화
+// Firebase Admin Initialization
+const serviceAccount = require("./serviceAccountKey.json");
 initializeApp({
-  credential: cert(serviceAccount)
+  credential: cert(serviceAccount),
 });
 
 const auth = getAuth();
 const db = getFirestore();
+const storage = new Storage();
 
-// 함수의 글로벌 옵션 설정
+// Function Global Options
 setGlobalOptions({
-  region: process.env.FUNCTION_REGION || 'asia-northeast3',
-  memory: process.env.FUNCTION_MEMORY || '512MB',
+  region: process.env.FUNCTION_REGION || "asia-northeast3",
+  memory: process.env.FUNCTION_MEMORY || "512MB",
   maxInstances: 10,
-  timeoutSeconds: 60
+  timeoutSeconds: 60,
 });
 
-// Clarifai 설정
-const PAT = process.env.CLARIFAI_PAT;
-const USER_ID = 'clarifai';
-const APP_ID = 'main';
-const MODEL_ID = 'food-item-recognition';
-const MODEL_VERSION_ID = '1d5fd481e0cf4826aa72ec3ff049e044';
+// Google Cloud Storage to Base64 Conversion
+async function getImageAsBase64(bucketName, fileName) {
+  try {
+    const bucket = storage.bucket(bucketName);
+    const file = bucket.file(fileName);
+    const [fileExists] = await file.exists();
 
-// 공통 gRPC 호출 설정 및 오류 처리
-async function callClarifaiAPI(imageUrl) {
-  const stub = ClarifaiStub.grpc();
-  const metadata = new grpc.Metadata();
-  metadata.set('authorization', `Key ${PAT}`);
+    if (!fileExists) {
+      throw new Error(`File does not exist: ${fileName}`);
+    }
 
-  return new Promise((resolve, reject) => {
-    stub.PostModelOutputs({
-      user_app_id: {
-        user_id: USER_ID,
-        app_id: APP_ID
-      },
-      model_id: MODEL_ID,
-      version_id: MODEL_VERSION_ID,
-      inputs: [
-        {
-          data: {
-            image: {
-              url: imageUrl,
-              allow_duplicate_url: true
-            }
-          }
-        }
-      ]
-    }, metadata, (err, response) => {
-      if (err) {
-        console.error('❌ Clarifai API 호출 오류:', err);
-        return reject(new Error('Clarifai API 호출 중 오류가 발생했습니다.'));
-      }
-      if (response.status.code !== 10000) {
-        console.error('❌ Clarifai API 응답 오류:', response.status);
-        return reject(new Error(`Clarifai API 응답 오류: ${response.status.description}`));
-      }
-      resolve(response);
-    });
-  });
+    const [fileBuffer] = await file.download();
+    const image = Buffer.from(fileBuffer).toString("base64");
+    console.log("Image successfully converted to Base64 format.");
+    return image;
+  } catch (error) {
+    console.error("Error during image download or conversion:", error);
+    throw new Error("Failed to download or convert image to Base64.");
+  }
 }
 
-// analyzeFoodImage 함수
-exports.analyzeFoodImage = onRequest({
-  cors: true,
-  maxInstances: 10,
-  timeoutSeconds: 30,
-  memory: '256MB'
-}, async (req, res) => {
-  console.log('🔍 analyzeFoodImage 호출됨:', { data: req.body });
-
-  // 인증 상태 확인
-  if (!req.headers.authorization) {
-    console.warn('⚠️ 비인증 사용자 접근 시도');
-    return res.status(401).send({ error: 'unauthenticated', message: '인증이 필요합니다.' });
-  }
-
-  const { imageUrl } = req.body;
-
-  if (!imageUrl) {
-    console.warn('⚠️ 이미지 URL 누락');
-    return res.status(400).send({ error: 'invalid-argument', message: '이미지 URL이 필요합니다.' });
-  }
-
+// YOLOv7 API Call to analyze the image
+async function analyzeImageWithYOLOv7(imageUrl) {
   try {
-    const clarifaiResponse = await callClarifaiAPI(imageUrl);
-    const output = clarifaiResponse.outputs[0];
-    const concepts = output.data.concepts;
+    // YOLOv7 서버의 엔드포인트
+    const yolov7Endpoint = process.env.YOLOV7_API_ENDPOINT;
 
-    const foodItems = concepts
-      .filter(concept => concept.value > 0.5)
-      .map(concept => ({
-        name: concept.name,
-        value: concept.value
-      }));
+    const response = await axios.post(
+      yolov7Endpoint,
+      { imageUrl }, // 이미지 URL을 서버에 전달
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      },
+    );
 
-    console.log('✅ 이미지 분석 성공:', foodItems);
-    return res.status(200).send({ foodItems });
+    if (response.status !== 200) {
+      throw new Error(`YOLOv7 요청 실패: 상태 코드 ${response.status}`);
+    }
+
+    console.log("YOLOv7 분석 성공:", response.data);
+    return response.data;
   } catch (error) {
-    console.error('❌ 이미지 분석 중 오류 발생:', error);
-    return res.status(500).send({ error: 'internal', message: '이미지 분석 실패' });
+    console.error("YOLOv7 이미지 분석 중 오류 발생:", error);
+    throw new Error("YOLOv7 분석 실패");
   }
-});
+}
 
-// getCustomToken 함수
-exports.getCustomToken = onRequest({
-  cors: true,
-  maxInstances: 10,
-  timeoutSeconds: 30,
-  memory: '256MB'
-}, async (req, res) => {
+// OpenAI Thread Creation
+async function createThread() {
   try {
-    // CORS preflight 처리
-    if (req.method === 'OPTIONS') {
-      res.set('Access-Control-Allow-Methods', 'POST');
-      res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-      res.set('Access-Control-Max-Age', '3600');
-      return res.status(204).send('');
-    }
+    const response = await axios.post(
+      "https://api.openai.com/v1/threads",
+      {},
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+    const threadId = response.data.id;
+    console.log("Thread created successfully:", threadId);
+    return threadId;
+  } catch (error) {
+    console.error("Failed to create thread:", error);
+    throw error;
+  }
+}
 
-    if (req.method !== 'POST') {
-      return res.status(405).json({
-        error: 'method_not_allowed',
-        message: 'POST 메소드만 허용됩니다.'
+// OpenAI Run Creation
+async function createRun(threadId, assistantId) {
+  try {
+    const response = await axios.post(
+      `https://api.openai.com/v1/threads/${threadId}/runs`,
+      {
+        assistant_id: assistantId,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+    const runId = response.data.id;
+    console.log("Run created successfully:", runId);
+    return runId;
+  } catch (error) {
+    console.error("Failed to create run:", error);
+    throw error;
+  }
+}
+
+// OpenAI Message Creation
+async function createMessage(threadId, runId, base64Image, mealType) {
+  try {
+    const response = await axios.post(
+      `https://api.openai.com/v1/threads/${threadId}/runs/${runId}/messages`,
+      {
+        role: "user",
+        content: `Analyze the following meal image: ${base64Image} for meal type: ${mealType}`,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+    console.log("Message created successfully:", response.data);
+    return response.data;
+  } catch (error) {
+    console.error("Failed to create message:", error);
+    throw error;
+  }
+}
+
+// analyzeFoodImage Cloud Function
+exports.analyzeFoodImage = onRequest(
+  {
+    cors: true,
+    maxInstances: 10,
+    timeoutSeconds: 60,
+    memory: "512MB",
+  },
+  async (req, res) => {
+    console.log("🔍 analyzeFoodImage invoked:", { data: req.body });
+
+    if (!req.headers.authorization) {
+      console.warn("⚠️ Unauthorized access attempt detected");
+      return res.status(401).send({
+        error: "unauthenticated",
+        message: "Authentication required.",
       });
     }
 
-    const { id, email, nickname, profileImageUrl } = req.body;
+    const { bucketName, fileName, mealType } = req.body;
 
-    // 필수 필드 검증
-    if (!id || !email || !nickname) {
-      return res.status(400).json({
-        error: 'missing_fields',
-        message: '필수 필드가 누락되었습니다.',
-        required: ['id', 'email', 'nickname'],
-        received: { id, email, nickname }
+    if (!bucketName || !fileName) {
+      console.warn("⚠️ Missing image data information");
+      return res.status(400).send({
+        error: "invalid-argument",
+        message: "Image file path is required.",
       });
     }
 
-    const uid = `kakao:${id}`;
+    try {
+      // Get image from Google Cloud Storage
+      const base64Image = await getImageAsBase64(bucketName, fileName);
 
-    // 사용자 생성 또는 업데이트
-    await auth.getUser(uid).catch(async (error) => {
-      if (error.code === 'auth/user-not-found') {
-        return auth.createUser({
-          uid,
-          email,
-          displayName: nickname,
-          photoURL: profileImageUrl
+      // Analyze image with YOLOv7
+      const yoloResult = await analyzeImageWithYOLOv7(
+        `gs://${bucketName}/${fileName}`,
+      );
+
+      // Create OpenAI thread
+      const threadId = await createThread();
+
+      // Create OpenAI run
+      const runId = await createRun(threadId, process.env.OPENAI_ASSISTANT_ID);
+
+      // Create message to analyze the image using OpenAI
+      const openAIResult = await createMessage(
+        threadId,
+        runId,
+        base64Image,
+        mealType,
+      );
+
+      // Merge YOLOv7 and OpenAI results
+      const result = {
+        yolo_analysis: yoloResult,
+        openai_analysis: openAIResult,
+      };
+
+      console.log("✅ Image analysis successful:", result);
+      return res.status(200).send(result);
+    } catch (error) {
+      console.error("❌ Error during image analysis:", error);
+      return res
+        .status(500)
+        .send({ error: "internal", message: "Image analysis failed" });
+    }
+  },
+);
+
+// getCustomToken Cloud Function
+exports.getCustomToken = onRequest(
+  {
+    cors: true,
+    maxInstances: 10,
+    timeoutSeconds: 30,
+    memory: "256MB",
+  },
+  async (req, res) => {
+    try {
+      if (req.method === "OPTIONS") {
+        res.set("Access-Control-Allow-Methods", "POST");
+        res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        res.set("Access-Control-Max-Age", "3600");
+        return res.status(204).send("");
+      }
+
+      if (req.method !== "POST") {
+        return res.status(405).json({
+          error: "method_not_allowed",
+          message: "Only POST method is allowed.",
         });
       }
-      throw error;
-    });
 
-    // 사용자 정보 업데이트
-    await auth.updateUser(uid, {
-      displayName: nickname,
-      photoURL: profileImageUrl
-    });
+      const { id, email, nickname, profileImageUrl } = req.body;
 
-    // Firestore에 사용자 정보 저장
-    await db.collection('users').doc(uid).set({
-      email,
-      nickname,
-      profileImageUrl,
-      provider: 'kakao',
-      updatedAt: new Date()
-    }, { merge: true });
+      if (!id || !email || !nickname) {
+        return res.status(400).json({
+          error: "missing_fields",
+          message: "Required fields are missing.",
+          required: ["id", "email", "nickname"],
+          received: { id, email, nickname },
+        });
+      }
 
-    // Custom Token 생성
-    const customToken = await auth.createCustomToken(uid);
+      const uid = `kakao:${id}`;
 
-    return res.status(200).json({
-      token: customToken,
-      status: 'success'
-    });
-  } catch (error) {
-    console.error('❌ 토큰 생성 중 오류 발생:', error);
+      await auth.getUser(uid).catch(async (error) => {
+        if (error.code === "auth/user-not-found") {
+          return auth.createUser({
+            uid,
+            email,
+            displayName: nickname,
+            photoURL: profileImageUrl,
+          });
+        }
+        throw error;
+      });
 
-    const errorResponse = {
-      error: error.code || 'internal_error',
-      message: error.message || '서버 오류가 발생했습니다.'
-    };
+      await auth.updateUser(uid, {
+        displayName: nickname,
+        photoURL: profileImageUrl,
+      });
 
-    if (error.code === 'auth/email-already-exists') {
-      errorResponse.message = '이미 사용 중인 이메일입니다.';
+      await db.collection("users").doc(uid).set(
+        {
+          email,
+          nickname,
+          profileImageUrl,
+          provider: "kakao",
+          updatedAt: new Date(),
+        },
+        { merge: true },
+      );
+
+      const customToken = await auth.createCustomToken(uid);
+
+      return res.status(200).json({
+        token: customToken,
+        status: "success",
+      });
+    } catch (error) {
+      console.error("❌ Error during token generation:", error);
+
+      const errorResponse = {
+        error: error.code || "internal_error",
+        message: error.message || "Server error occurred.",
+      };
+
+      if (error.code === "auth/email-already-exists") {
+        errorResponse.message = "Email is already in use.";
+      }
+
+      return res.status(error.code ? 400 : 500).json(errorResponse);
+    }
+  },
+);
+
+// healthCheck Cloud Function
+exports.healthCheck = onRequest(
+  {
+    cors: true,
+    maxInstances: 5,
+  },
+  (req, res) => {
+    if (req.method === "OPTIONS") {
+      res.set("Access-Control-Allow-Methods", "GET");
+      res.set("Access-Control-Allow-Headers", "Content-Type");
+      res.set("Access-Control-Max-Age", "3600");
+      return res.status(204).send("");
     }
 
-    return res.status(error.code ? 400 : 500).json(errorResponse);
-  }
-});
+    if (req.method !== "GET") {
+      return res.status(405).json({
+        error: "method_not_allowed",
+        message: "Only GET method is allowed.",
+      });
+    }
 
-// healthCheck 함수
-exports.healthCheck = onRequest({
-  cors: true,
-  maxInstances: 5
-}, (req, res) => {
-  if (req.method === 'OPTIONS') {
-    res.set('Access-Control-Allow-Methods', 'GET');
-    res.set('Access-Control-Allow-Headers', 'Content-Type');
-    res.set('Access-Control-Max-Age', '3600');
-    return res.status(204).send('');
-  }
-
-  if (req.method !== 'GET') {
-    return res.status(405).json({
-      error: 'method_not_allowed',
-      message: 'GET 메소드만 허용됩니다.'
+    return res.status(200).json({
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      region: process.env.FUNCTION_REGION || "asia-northeast3",
     });
-  }
-
-  return res.status(200).json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    region: process.env.FUNCTION_REGION || 'asia-northeast3'
-  });
-});
+  },
+);

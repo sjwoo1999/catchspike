@@ -16,7 +16,7 @@ class FoodItem {
   factory FoodItem.fromJson(Map<String, dynamic> json) {
     return FoodItem(
       name: json['name'] as String,
-      confidence: (json['value'] as num).toDouble(),
+      confidence: (json['confidence'] as num).toDouble(),
       giIndex:
           json['giIndex'] != null ? (json['giIndex'] as num).toDouble() : null,
       nutrients: json['nutrients'] != null
@@ -27,7 +27,7 @@ class FoodItem {
 
   Map<String, dynamic> toJson() => {
         'name': name,
-        'value': confidence,
+        'confidence': confidence,
         if (giIndex != null) 'giIndex': giIndex,
         if (nutrients != null) 'nutrients': nutrients,
       };

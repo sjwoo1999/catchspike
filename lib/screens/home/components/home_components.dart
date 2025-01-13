@@ -1,4 +1,3 @@
-// lib/screens/home/components/home_components.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../providers/user_provider.dart';

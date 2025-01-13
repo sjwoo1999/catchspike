@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert'; // Base64 변환을 위한 import 추가
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
@@ -7,6 +8,8 @@ import '../models/users.dart';
 import '../models/onboarding_status.dart';
 import '../utils/logger.dart';
 import 'package:intl/intl.dart';
+import '../models/analysis_result.dart';
+import 'package:image/image.dart' as img;
 
 class FirebaseService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -85,7 +88,7 @@ class FirebaseService {
         imageUrl: imageUrl,
         timestamp: timestamp,
         mealType: mealType,
-        analysisResult: {},
+        analysisResult: null,
         status: 'pending_analysis',
         createdAt: now,
         updatedAt: now,
@@ -133,7 +136,7 @@ class FirebaseService {
     String recordId, {
     required String status,
     String? error,
-    Map<String, dynamic>? analysisResult,
+    AnalysisResult? analysisResult,
   }) async {
     try {
       final docRef = _firestore
@@ -153,7 +156,7 @@ class FirebaseService {
       }
 
       if (analysisResult != null) {
-        updates['analysisResult'] = analysisResult;
+        updates['analysisResult'] = analysisResult.toJson();
         updates['analyzedAt'] = FieldValue.serverTimestamp();
       }
 
@@ -195,6 +198,33 @@ class FirebaseService {
     }
   }
 
+  Future<String> getBase64ImageWithReducedSize(String imageUrl) async {
+    try {
+      final ref = _storage.refFromURL(imageUrl);
+      final bytes = await ref.getData();
+
+      if (bytes == null) {
+        throw Exception('이미지 데이터를 가져올 수 없습니다: $imageUrl');
+      }
+
+      // 이미지 압축 및 해상도 축소
+      img.Image? originalImage = img.decodeImage(bytes);
+      if (originalImage == null) {
+        throw Exception('이미지를 디코딩할 수 없습니다.');
+      }
+
+      final resizedImage = img.copyResize(originalImage, width: 300);
+      final jpegImage = img.encodeJpg(resizedImage, quality: 70);
+
+      final base64Image = base64Encode(jpegImage);
+      Logger.log('이미지를 Base64 형식으로 변환 성공');
+      return base64Image;
+    } catch (e) {
+      Logger.log('이미지 Base64 변환 실패: $e');
+      rethrow;
+    }
+  }
+
   Stream<MealRecord> watchMealRecord(String userId, String recordId) {
     return _firestore
         .collection('users')
@@ -202,6 +232,38 @@ class FirebaseService {
         .collection('meals')
         .doc(recordId)
         .snapshots()
-        .map((snapshot) => MealRecord.fromFirestore(snapshot));
+        .map((snapshot) {
+      if (snapshot.data() == null) {
+        throw Exception('Record not found or has been deleted');
+      }
+      return MealRecord.fromFirestore(snapshot);
+    });
+  }
+
+  Future<void> saveAnalysisResult(
+    String userId,
+    String recordId,
+    AnalysisResult analysisResult,
+  ) async {
+    try {
+      final docRef = _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('meals')
+          .doc(recordId);
+
+      final updates = {
+        'analysisResult': analysisResult.toJson(),
+        'status': 'analysis_saved',
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      await docRef.update(updates);
+
+      Logger.log('분석 결과 저장 성공: $recordId');
+    } catch (e) {
+      Logger.log('분석 결과 저장 실패: $e');
+      rethrow;
+    }
   }
 }
