@@ -5,12 +5,14 @@ class Meal {
   final String menu;
   final int calories;
   final int healthScore;
+  final String imageUrl;
 
   const Meal({
     required this.time,
     required this.menu,
     required this.calories,
     required this.healthScore,
+    required this.imageUrl,
   });
 }
 

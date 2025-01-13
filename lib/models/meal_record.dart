@@ -1,6 +1,7 @@
-// meal_record.dart
+// lib/models/meal_record.dart
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'analysis_result.dart';
 
 class MealRecord {
   final String id;
@@ -8,7 +9,7 @@ class MealRecord {
   final String imageUrl;
   final DateTime timestamp;
   final String mealType;
-  final Map<String, dynamic> analysisResult;
+  final AnalysisResult? analysisResult;
   final String status;
   final DateTime? analyzedAt;
   final String? error;
@@ -21,7 +22,7 @@ class MealRecord {
     required this.imageUrl,
     required this.timestamp,
     required this.mealType,
-    required this.analysisResult,
+    this.analysisResult,
     this.status = 'pending_analysis',
     this.analyzedAt,
     this.error,
@@ -38,7 +39,10 @@ class MealRecord {
       imageUrl: data['imageUrl'] as String,
       timestamp: (data['timestamp'] as Timestamp).toDate(),
       mealType: data['mealType'] as String,
-      analysisResult: data['analysisResult'] as Map<String, dynamic>? ?? {},
+      analysisResult: data['analysisResult'] != null
+          ? AnalysisResult.fromJson(
+              data['analysisResult'] as Map<String, dynamic>)
+          : null,
       status: data['status'] as String? ?? 'pending_analysis',
       analyzedAt: data['analyzedAt'] != null
           ? (data['analyzedAt'] as Timestamp).toDate()
@@ -60,7 +64,7 @@ class MealRecord {
       'imageUrl': imageUrl,
       'timestamp': Timestamp.fromDate(timestamp),
       'mealType': mealType,
-      'analysisResult': analysisResult,
+      'analysisResult': analysisResult?.toJson(),
       'status': status,
       'analyzedAt': analyzedAt != null ? Timestamp.fromDate(analyzedAt!) : null,
       'error': error,
@@ -80,7 +84,7 @@ class MealRecord {
     String? imageUrl,
     DateTime? timestamp,
     String? mealType,
-    Map<String, dynamic>? analysisResult,
+    AnalysisResult? analysisResult,
     String? status,
     DateTime? analyzedAt,
     String? error,
@@ -99,97 +103,6 @@ class MealRecord {
       error: error ?? this.error,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
-    );
-  }
-
-  // 상태 검사 메서드들
-  bool get isAnalyzing => status == 'analyzing';
-  bool get isAnalyzed => status == 'analyzed';
-  bool get hasError => status == 'analysis_failed';
-  bool get isPending => status == 'pending_analysis';
-
-  // 분석 결과 관련 getter 메서드들
-  List<String> get foodItems {
-    try {
-      final analysis = analysisResult['analysis'] as Map<String, dynamic>?;
-      return (analysis?['foodList'] as List<dynamic>?)
-              ?.map((item) => item.toString())
-              .toList() ??
-          [];
-    } catch (e) {
-      return [];
-    }
-  }
-
-  double get totalCalories {
-    try {
-      final analysis = analysisResult['analysis'] as Map<String, dynamic>?;
-      return (analysis?['totalCalories'] as num?)?.toDouble() ?? 0.0;
-    } catch (e) {
-      return 0.0;
-    }
-  }
-
-  Map<String, double> get nutrients {
-    try {
-      final analysis = analysisResult['analysis'] as Map<String, dynamic>?;
-      final nutrients = analysis?['nutrients'] as Map<String, dynamic>?;
-      return {
-        'carbs': (nutrients?['carbs'] as num?)?.toDouble() ?? 0.0,
-        'protein': (nutrients?['protein'] as num?)?.toDouble() ?? 0.0,
-        'fat': (nutrients?['fat'] as num?)?.toDouble() ?? 0.0,
-      };
-    } catch (e) {
-      return {
-        'carbs': 0.0,
-        'protein': 0.0,
-        'fat': 0.0,
-      };
-    }
-  }
-
-  List<String> get healthSuggestions {
-    try {
-      final analysis = analysisResult['analysis'] as Map<String, dynamic>?;
-      return (analysis?['suggestions'] as List<dynamic>?)
-              ?.map((suggestion) => suggestion.toString())
-              .toList() ??
-          [];
-    } catch (e) {
-      return [];
-    }
-  }
-
-  // toString 메서드 오버라이드
-  @override
-  String toString() {
-    return 'MealRecord(id: $id, userId: $userId, mealType: $mealType, '
-        'status: $status, timestamp: $timestamp)';
-  }
-
-  // equals 메서드 오버라이드
-  @override
-  bool operator ==(Object other) {
-    if (identical(this, other)) return true;
-    return other is MealRecord &&
-        other.id == id &&
-        other.userId == userId &&
-        other.imageUrl == imageUrl &&
-        other.timestamp == timestamp &&
-        other.mealType == mealType &&
-        other.status == status;
-  }
-
-  // hashCode 메서드 오버라이드
-  @override
-  int get hashCode {
-    return Object.hash(
-      id,
-      userId,
-      imageUrl,
-      timestamp,
-      mealType,
-      status,
     );
   }
 }

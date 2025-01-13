@@ -1,8 +1,7 @@
-// lib/screens/onboarding/onboarding_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart' as kakao;
+
 import '../../models/user_details.dart';
 import '../../services/auth_service.dart';
 import '../../providers/user_provider.dart';

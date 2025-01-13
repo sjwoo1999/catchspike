@@ -1,19 +1,22 @@
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart';
-import '../../models/meal_record.dart';
-import '../../services/firebase_service.dart';
-import '../../utils/logger.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:intl/intl.dart';
+import 'package:catchspike/models/meal_record.dart';
+import 'package:catchspike/services/meal_analysis_service.dart';
+import 'package:catchspike/utils/logger.dart';
+import 'package:image/image.dart' as img;
+import 'package:catchspike/widgets/loading_overlay.dart';
+import 'package:path_provider/path_provider.dart';
 
 class MealAnalysisScreen extends StatefulWidget {
   final MealRecord mealRecord;
-  final String userId;
+  final Map<String, dynamic> analysisResult;
 
   const MealAnalysisScreen({
     Key? key,
     required this.mealRecord,
-    required this.userId,
+    required this.analysisResult,
   }) : super(key: key);
 
   @override
@@ -21,340 +24,223 @@ class MealAnalysisScreen extends StatefulWidget {
 }
 
 class _MealAnalysisScreenState extends State<MealAnalysisScreen> {
-  final FirebaseService _firebaseService = FirebaseService();
-  bool _isLoading = true;
-  String? _error;
-  MealRecord? _currentRecord;
+  final ValueNotifier<bool> _isLoading = ValueNotifier(false);
+  final ValueNotifier<String> _analysisStatus = ValueNotifier('');
+  final ValueNotifier<Map<String, dynamic>?> _analysisResult =
+      ValueNotifier(null);
+  final MealAnalysisService _mealAnalysisService = MealAnalysisService();
 
   @override
   void initState() {
     super.initState();
-    _loadAnalysisResult();
+    _analysisResult.value = widget.analysisResult;
   }
 
-  Future<void> _loadAnalysisResult() async {
+  @override
+  void dispose() {
+    _isLoading.dispose();
+    _analysisStatus.dispose();
+    _analysisResult.dispose();
+    super.dispose();
+  }
+
+  Future<void> _startMealAnalysis() async {
+    _isLoading.value = true;
+    _analysisStatus.value = '이미지 분석 중...';
+
     try {
-      setState(() {
-        _isLoading = true;
-        _error = null;
-      });
-
-      _firebaseService
-          .watchMealRecord(widget.userId, widget.mealRecord.id)
-          .listen(
-        (updatedRecord) {
-          Logger.log('분석 결과 업데이트: ${updatedRecord.toString()}');
-          if (mounted) {
-            setState(() {
-              _currentRecord = updatedRecord;
-              _isLoading = false;
-            });
-          }
-        },
-        onError: (error) {
-          Logger.log('분석 결과 스트림 에러: $error');
-          if (mounted) {
-            setState(() {
-              _error = '데이터 로드 중 오류가 발생했습니다';
-              _isLoading = false;
-            });
-          }
-        },
-      );
-    } catch (e) {
-      Logger.log('분석 결과 로드 실패: $e');
-      if (mounted) {
-        setState(() {
-          _error = '분석 결과를 불러오는 중 오류가 발생했습니다';
-          _isLoading = false;
-        });
+      final compressedImageFile =
+          await _downloadAndCompressImage(widget.mealRecord.imageUrl);
+      if (compressedImageFile == null) {
+        throw Exception('이미지 압축에 실패했습니다.');
       }
+
+      // YOLOv7 분석
+      _analysisStatus.value = 'YOLOv7 분석 중...';
+      final yoloResult = await _mealAnalysisService
+          .analyzeMealImageUsingYOLOv7(compressedImageFile);
+
+      // OpenAI 추가 분석
+      _analysisStatus.value = 'OpenAI 분석 중...';
+      final base64Image =
+          _mealAnalysisService.compressAndEncodeImage(compressedImageFile);
+      final openAIResult = await _mealAnalysisService
+          .analyzeMealImageUsingAssistant(base64Image);
+
+      // 통합 결과 설정
+      _analysisResult.value =
+          _mealAnalysisService.mergeAnalysisResults(yoloResult, openAIResult);
+      _analysisStatus.value = '분석 완료';
+    } catch (e) {
+      Logger.log('[ERROR] 분석 실패: $e');
+      _analysisStatus.value = '분석 실패: $e';
+    } finally {
+      _isLoading.value = false;
     }
   }
 
-  void _retryAnalysis() async {
+  Future<File?> _downloadAndCompressImage(String imageUrl) async {
     try {
-      setState(() {
-        _isLoading = true;
-        _error = null;
-      });
+      // Step 1: HttpClient를 사용하여 이미지 다운로드
+      final HttpClient client = HttpClient();
+      final HttpClientRequest request =
+          await client.getUrl(Uri.parse(imageUrl));
+      final HttpClientResponse response = await request.close();
 
-      await _firebaseService.updateMealRecordStatus(
-        widget.userId,
-        widget.mealRecord.id,
-        status: 'pending',
-      );
-
-      _loadAnalysisResult();
-    } catch (e) {
-      Logger.log('재분석 시도 실패: $e');
-      if (mounted) {
-        setState(() {
-          _error = '재분석 시도 중 오류가 발생했습니다';
-          _isLoading = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('재분석 시도 중 오류가 발생했습니다'),
-            backgroundColor: Colors.red,
-          ),
-        );
+      if (response.statusCode != 200) {
+        throw Exception('이미지 다운로드 실패: 상태 코드 ${response.statusCode}');
       }
+
+      // Step 2: 응답 바이트 수집
+      final List<int> imageBytes =
+          await consolidateHttpClientResponseBytes(response);
+      Logger.log('[INFO] 이미지 다운로드 성공');
+
+      // Step 3: 이미지 압축
+      final img.Image? originalImage = img.decodeImage(imageBytes);
+      if (originalImage == null) {
+        throw Exception("이미지 디코딩에 실패했습니다.");
+      }
+
+      // 이미지 리사이즈 및 품질 조정
+      final img.Image resizedImage =
+          img.copyResize(originalImage, width: originalImage.width ~/ 2);
+      final List<int> compressedImage =
+          img.encodeJpg(resizedImage, quality: 50);
+      Logger.log('[INFO] 이미지 압축 성공');
+
+      // Step 4: 압축된 이미지를 임시 파일로 저장
+      final directory = await getTemporaryDirectory();
+      final filePath = '${directory.path}/compressed_image.jpg';
+      final compressedFile = File(filePath);
+      await compressedFile.writeAsBytes(compressedImage);
+
+      return compressedFile;
+    } catch (e) {
+      Logger.log('[ERROR] 이미지 압축 실패: $e');
+      return null;
     }
   }
 
-  void _shareResult() {
-    if (_currentRecord == null) return;
-
-    final analysisResult = _currentRecord?.analysisResult;
-    if (analysisResult == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('공유할 분석 결과가 없습니다')),
-      );
-      return;
-    }
-
-    final dateFormatter = DateFormat('yyyy/MM/dd');
-    final formattedDate = dateFormatter.format(_currentRecord!.timestamp);
-
-    final foodItems = analysisResult['foodItems'] as List<dynamic>? ?? [];
-    final foodList = foodItems.map((item) => item['name']).join(', ');
-
-    final shareText = '''
-📊 식사 분석 결과
-
-📅 날짜: $formattedDate
-🕒 시간: ${_getMealTypeText(_currentRecord!.mealType)}
-
-🍽️ 음식: $foodList
-
-#CatchSpike #식사기록 #건강관리
-''';
-
-    Share.share(shareText);
+  void _resetAnalysis() {
+    _isLoading.value = false;
+    _analysisStatus.value = '';
+    _analysisResult.value = null;
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          '식사 분석 결과',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        backgroundColor: Theme.of(context).primaryColor,
-        iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text('식사 분석'),
         actions: [
-          if (_currentRecord?.status == 'completed')
+          if (_analysisResult.value != null)
             IconButton(
-              icon: const Icon(Icons.share, color: Colors.white),
-              onPressed: _shareResult,
+              icon: const Icon(Icons.refresh),
+              onPressed: _resetAnalysis,
+              tooltip: '분석 다시 시작',
             ),
         ],
       ),
       body: SafeArea(
-        child: _buildContent(),
-      ),
-    );
-  }
-
-  Widget _buildContent() {
-    if (_isLoading) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+        child: Stack(
           children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('분석 결과를 불러오는 중...'),
-          ],
-        ),
-      );
-    }
-
-    if (_error != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(_error!),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _retryAnalysis,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Theme.of(context).primaryColor,
-                foregroundColor: Colors.white,
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ValueListenableBuilder<bool>(
+                    valueListenable: _isLoading,
+                    builder: (context, isLoading, child) {
+                      if (isLoading) {
+                        return _buildLoadingState();
+                      } else if (_analysisResult.value != null) {
+                        return _buildAnalysisResult();
+                      } else {
+                        return _buildInitialButton();
+                      }
+                    },
+                  ),
+                ],
               ),
-              child: const Text('다시 시도'),
             ),
+            if (_isLoading.value)
+              const LoadingOverlay(
+                message: '음식 분석 중...',
+                useCustomIndicator: true,
+              ),
           ],
         ),
-      );
-    }
-
-    if (_currentRecord == null) {
-      return const Center(
-        child: Text('데이터를 찾을 수 없습니다'),
-      );
-    }
-
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          AspectRatio(
-            aspectRatio: 16 / 9,
-            child: Image.network(
-              _currentRecord!.imageUrl,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  color: Colors.grey[200],
-                  child: const Center(
-                    child: Text('이미지를 불러올 수 없습니다'),
-                  ),
-                );
-              },
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).primaryColor,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        _getMealTypeText(_currentRecord!.mealType),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      DateFormat('yyyy/MM/dd')
-                          .format(_currentRecord!.timestamp),
-                      style: TextStyle(
-                        color: Colors.grey[600],
-                        fontSize: 16,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                if (_currentRecord!.status == 'completed')
-                  _buildAnalysisResult()
-                else if (_currentRecord!.status == 'analyzing')
-                  const Center(
-                    child: Column(
-                      children: [
-                        CircularProgressIndicator(),
-                        SizedBox(height: 16),
-                        Text('이미지 분석 중...'),
-                      ],
-                    ),
-                  )
-                else if (_currentRecord!.status == 'failed')
-                  Center(
-                    child: Column(
-                      children: [
-                        const Text('분석에 실패했습니다'),
-                        const SizedBox(height: 16),
-                        ElevatedButton(
-                          onPressed: _retryAnalysis,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Theme.of(context).primaryColor,
-                            foregroundColor: Colors.white,
-                          ),
-                          child: const Text('다시 시도'),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
 
-  Widget _buildAnalysisResult() {
-    final analysisResult = _currentRecord?.analysisResult;
-    if (analysisResult == null) {
-      return const Center(
-        child: Text('분석 결과가 없습니다'),
-      );
-    }
+  Widget _buildLoadingState() {
+    return Container(); // 로딩 상태는 오버레이로 대체되므로 빈 컨테이너 반환
+  }
 
-    final nutrients =
-        analysisResult['nutrition']?['nutrients'] as Map<String, double>? ?? {};
-
+  Widget _buildInitialButton() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        ElevatedButton(
+          onPressed: _startMealAnalysis,
+          child: const Text('분석 시작'),
+        ),
+        const SizedBox(height: 20),
         const Text(
-          '분석 결과',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
+          '사진을 분석하여 영양 정보를 확인할 수 있습니다.',
+          style: TextStyle(fontSize: 16),
         ),
-        const SizedBox(height: 16),
-        const Text(
-          '영양 성분',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          height: 200,
-          child: PieChart(
-            PieChartData(
-              sections: nutrients.entries.map((entry) {
-                return PieChartSectionData(
-                  title: '${entry.key}: ${entry.value}g',
-                  value: entry.value,
-                  radius: 60,
-                );
-              }).toList(),
-            ),
-          ),
-        ),
-        const SizedBox(height: 24),
       ],
     );
   }
 
-  String _getMealTypeText(String mealType) {
-    switch (mealType.toLowerCase()) {
-      case 'breakfast':
-        return '아침';
-      case 'lunch':
-        return '점심';
-      case 'dinner':
-        return '저녁';
-      case 'snack':
-        return '간식';
-      default:
-        return mealType;
-    }
+  Widget _buildAnalysisResult() {
+    return Expanded(
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildYOLOResult(),
+            const SizedBox(height: 20),
+            _buildOpenAIResult(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildYOLOResult() {
+    final yoloAnalysis = _analysisResult.value?['yolo_analysis'] ?? {};
+    final detectedFoods = yoloAnalysis['detectedFoods'] ?? [];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('YOLO 분석 결과',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 10),
+        const Text('감지된 음식:', style: TextStyle(fontSize: 16)),
+        const SizedBox(height: 8),
+        ...detectedFoods.map<Widget>(
+            (food) => Text('- $food', style: const TextStyle(fontSize: 16))),
+      ],
+    );
+  }
+
+  Widget _buildOpenAIResult() {
+    final openAIAnalysis = _analysisResult.value?['openai_analysis'] ?? {};
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('OpenAI 분석 결과',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 10),
+        Text(openAIAnalysis['analysis'] ?? '결과를 가져오지 못했습니다.',
+            style: const TextStyle(fontSize: 16)),
+      ],
+    );
   }
 }

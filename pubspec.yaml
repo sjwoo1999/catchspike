@@ -43,6 +43,9 @@ dependencies:
   connectivity_plus: ^6.1.0
   fl_chart: ^0.69.0
 
+  # Image
+  image: ^3.0.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -53,6 +56,8 @@ flutter:
 
   assets:
     - .env
+    - .env.development
+    - .env.production
     - assets/images/
 
   fonts:

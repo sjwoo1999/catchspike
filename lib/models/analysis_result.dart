@@ -5,79 +5,83 @@ import 'food_item.dart';
 class AnalysisResult {
   final List<FoodItem> detectedFoods;
   final NutritionAnalysis nutritionAnalysis;
-  final List<String> recommendations;
+  final String comment;
+  final int overallHealthScore;
+  final String scoreBasis;
   final AnalysisMetadata metadata;
 
   const AnalysisResult({
     required this.detectedFoods,
     required this.nutritionAnalysis,
-    required this.recommendations,
+    required this.comment,
+    required this.overallHealthScore,
+    required this.scoreBasis,
     required this.metadata,
   });
 
   factory AnalysisResult.fromJson(Map<String, dynamic> json) {
     return AnalysisResult(
-      detectedFoods: (json['foods']['detected'] as List)
+      detectedFoods: (json['foods'] as List)
           .map((food) => FoodItem.fromJson(food))
           .toList(),
       nutritionAnalysis: NutritionAnalysis.fromJson(json['nutrition']),
-      recommendations: List<String>.from(json['recommendations']['tips']),
+      comment: json['comment'] ?? "",
+      overallHealthScore: json['overall_health_score'] ?? 0,
+      scoreBasis: json['score_basis'] ?? "",
       metadata: AnalysisMetadata.fromJson(json['metadata']),
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'foods': {
-          'detected': detectedFoods.map((food) => food.toJson()).toList(),
-        },
+        'foods': detectedFoods.map((food) => food.toJson()).toList(),
         'nutrition': nutritionAnalysis.toJson(),
-        'recommendations': {
-          'tips': recommendations,
-        },
+        'comment': comment,
+        'overall_health_score': overallHealthScore,
+        'score_basis': scoreBasis,
         'metadata': metadata.toJson(),
       };
 }
 
 class NutritionAnalysis {
-  final Map<String, double> giIndices;
-  final List<String> eatingOrder;
-  final Map<String, double> nutrients;
-  final double totalCalories;
+  final double glycemicIndex;
+  final double calories;
+  final double GI;
+  final double estimatedGrams;
 
   const NutritionAnalysis({
-    required this.giIndices,
-    required this.eatingOrder,
-    required this.nutrients,
-    required this.totalCalories,
+    required this.glycemicIndex,
+    required this.calories,
+    required this.GI,
+    required this.estimatedGrams,
   });
 
   factory NutritionAnalysis.fromJson(Map<String, dynamic> json) {
     return NutritionAnalysis(
-      giIndices: Map<String, double>.from(json['giIndices']),
-      eatingOrder: List<String>.from(json['eatingOrder']),
-      nutrients: Map<String, double>.from(json['nutrients']),
-      totalCalories: (json['totalCalories'] as num).toDouble(),
+      glycemicIndex: (json['glycemic_index'] as num?)?.toDouble() ?? 0.0,
+      calories: (json['calories'] as num?)?.toDouble() ?? 0.0,
+      GI: (json['GI'] as num?)?.toDouble() ?? 0.0,
+      estimatedGrams: (json['estimated_grams'] as num?)?.toDouble() ?? 0.0,
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'giIndices': giIndices,
-        'eatingOrder': eatingOrder,
-        'nutrients': nutrients,
-        'totalCalories': totalCalories,
+        'glycemic_index': glycemicIndex,
+        'calories': calories,
+        'GI': GI,
+        'estimated_grams': estimatedGrams,
       };
 }
 
 class AnalysisMetadata {
   final DateTime analyzedAt;
   final String mealType;
-  final String imageUrl;
+  final String? imageUrl;
   final String? modelVersion;
 
   const AnalysisMetadata({
     required this.analyzedAt,
     required this.mealType,
-    required this.imageUrl,
+    this.imageUrl,
     this.modelVersion,
   });
 
@@ -93,7 +97,7 @@ class AnalysisMetadata {
   Map<String, dynamic> toJson() => {
         'analyzedAt': analyzedAt.toIso8601String(),
         'mealType': mealType,
-        'imageUrl': imageUrl,
+        if (imageUrl != null) 'imageUrl': imageUrl,
         if (modelVersion != null) 'modelVersion': modelVersion,
       };
 }

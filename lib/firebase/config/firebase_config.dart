@@ -34,7 +34,7 @@ class FirebaseConfig {
   // OpenAI 설정
   static String get openAiKey => _getEnvOrThrow('OPENAI_API_KEY');
   static String get openAiModel =>
-      const String.fromEnvironment('OPENAI_MODEL', defaultValue: 'gpt-4');
+      const String.fromEnvironment('OPENAI_MODEL', defaultValue: 'gpt-4o');
 
   // Firebase Cloud Functions URLs
   static String get analyzeFoodImageUrl =>

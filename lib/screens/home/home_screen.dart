@@ -16,11 +16,11 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool _isInitialized = false;
+  int _selectedIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    // 빌드가 완료된 후 초기화 실행
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeUser();
     });
@@ -51,7 +51,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _handleAuthError(dynamic error) {
-    // 인증 관련 에러 확인 및 처리
+    Logger.log('인증 오류 발생: $error');
+
     if (error.toString().contains("authentication token doesn't exist") ||
         error.toString().contains("KakaoClientException")) {
       _navigateToOnboarding();
@@ -91,52 +92,23 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  List<Widget> _screens = [
+    const HomeContent(), // 홈 화면
+    const Placeholder(), // 리포트 화면 (임시)
+    const Placeholder(), // 설정 화면 (임시)
+    const Placeholder(), // 기타 화면 (임시)
+  ];
+
+  void _onItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+  }
+
   Widget _buildLoadingScreen() {
     return const Scaffold(
       body: Center(
         child: LoadingIndicator(),
-      ),
-    );
-  }
-
-  Widget _buildHomeContent() {
-    return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            const Expanded(
-              child: HomeContent(),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: ElevatedButton(
-                onPressed: _navigateToMealRecord,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).primaryColor,
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
-                    Icon(Icons.camera_alt),
-                    SizedBox(width: 8),
-                    Text(
-                      '식사 기록하기',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -159,7 +131,87 @@ class _HomeScreenState extends State<HomeScreen> {
         }
 
         // 메인 홈 화면 표시
-        return _buildHomeContent();
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text(
+              'CATCHSPIKE',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            centerTitle: false,
+          ),
+          body: Stack(
+            children: [
+              // 화면 콘텐츠
+              IndexedStack(
+                index: _selectedIndex,
+                children: _screens,
+              ),
+              // '홈' 화면에서만 식사 기록하기 버튼 표시
+              if (_selectedIndex == 0)
+                Positioned(
+                  bottom: 16.0,
+                  left: 16.0,
+                  right: 16.0,
+                  child: ElevatedButton(
+                    onPressed: _navigateToMealRecord,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Theme.of(context).primaryColor,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(double.infinity, 50),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: const [
+                        Icon(Icons.camera_alt),
+                        SizedBox(width: 8),
+                        Text(
+                          '식사 기록하기',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          bottomNavigationBar: BottomNavigationBar(
+            items: const [
+              BottomNavigationBarItem(
+                icon: Icon(Icons.home_outlined),
+                activeIcon: Icon(Icons.home),
+                label: '홈',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.bar_chart_outlined),
+                activeIcon: Icon(Icons.bar_chart),
+                label: '리포트',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.settings_outlined),
+                activeIcon: Icon(Icons.settings),
+                label: '설정',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.more_horiz),
+                activeIcon: Icon(Icons.more_horiz),
+                label: '기타',
+              ),
+            ],
+            currentIndex: _selectedIndex,
+            selectedItemColor: const Color(0xFFE30547),
+            unselectedItemColor: Colors.grey,
+            onTap: _onItemTapped,
+          ),
+        );
       },
     );
   }
