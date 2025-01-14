@@ -15,12 +15,14 @@ import 'firebase/config/firebase_config.dart';
 import 'providers/user_provider.dart';
 import 'screens/onboarding/onboarding_screen.dart';
 import 'screens/home/home_screen.dart';
+import 'screens/report/report_screen.dart';
+import 'screens/community/community_screen.dart';
+import 'screens/achievement/achievement_screen.dart';
 import 'utils/global_keys.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. 실행 환경에 따른 환경 파일 설정
   final environment = const String.fromEnvironment(
     'ENV',
     defaultValue: 'development', // 기본값은 개발 환경
@@ -39,14 +41,11 @@ Future<void> main() async {
     rethrow;
   }
 
-  // 2. 현재 실행된 환경 출력
   final firebaseEnv = dotenv.env['FIREBASE_ENV'] ?? 'UNKNOWN';
   print("🌍 실행된 환경: ${firebaseEnv.toUpperCase()}");
 
-  // 3. 환경 변수 검증
   _validateEnvironmentVariables(firebaseEnv);
 
-  // 4. Firebase 초기화
   if (Firebase.apps.isEmpty) {
     try {
       await Firebase.initializeApp(
@@ -58,7 +57,6 @@ Future<void> main() async {
       rethrow;
     }
 
-    // Firebase Emulator 설정 (개발 환경에서만)
     if (firebaseEnv == 'development' &&
         dotenv.env['USE_FIREBASE_EMULATOR'] == 'true') {
       print("⚙️ 개발 환경: Firebase Emulator 설정 중...");
@@ -81,14 +79,12 @@ Future<void> main() async {
     }
   }
 
-  // 6. Kakao SDK 초기화
   kakao_sdk.KakaoSdk.init(
     nativeAppKey: FirebaseConfig.kakaoNativeKey,
     javaScriptAppKey: FirebaseConfig.kakaoJavaScriptKey,
   );
   print("✅ Kakao SDK 초기화 완료");
 
-  // 7. 앱 실행
   runApp(
     MultiProvider(
       providers: [
@@ -99,7 +95,6 @@ Future<void> main() async {
   );
 }
 
-// 환경 변수 검증 함수
 void _validateEnvironmentVariables(String environment) {
   final commonEnvVars = [
     'FIREBASE_ENV',
@@ -186,7 +181,9 @@ class _MainScreenState extends State<MainScreen> {
 
   final List<Widget> _screens = [
     const HomeScreen(),
-    const OnboardingScreen(), // Placeholder
+    const ReportScreen(),
+    const CommunityScreen(),
+    AchievementScreen(),
   ];
 
   void _onItemTapped(int index) {
@@ -232,9 +229,19 @@ class _MainScreenState extends State<MainScreen> {
             label: '홈',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.insert_chart_outlined),
-            activeIcon: Icon(Icons.insert_chart),
+            icon: Icon(Icons.bar_chart_outlined),
+            activeIcon: Icon(Icons.bar_chart),
             label: '리포트',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.group_outlined),
+            activeIcon: Icon(Icons.group),
+            label: '커뮤니티',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.emoji_events_outlined),
+            activeIcon: Icon(Icons.emoji_events),
+            label: '성과',
           ),
         ],
         currentIndex: _selectedIndex,
