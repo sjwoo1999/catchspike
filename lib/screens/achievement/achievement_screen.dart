@@ -38,8 +38,8 @@ class AchievementsController extends GetxController {
   }
 }
 
-class AchievementsScreen extends StatelessWidget {
-  AchievementsScreen({super.key}) {
+class AchievementScreen extends StatelessWidget {
+  AchievementScreen({super.key}) {
     // 컨트롤러 초기화
     Get.put(AchievementsController());
   }

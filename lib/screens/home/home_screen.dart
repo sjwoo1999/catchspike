@@ -7,6 +7,9 @@ import '../../widgets/custom_drawer.dart'; // CustomDrawer import
 import 'components/home_components.dart';
 import '../onboarding/onboarding_screen.dart';
 import '../meal/meal_record_screen.dart';
+import '../report/report_screen.dart'; // ReportScreen import
+import '../community/community_screen.dart'; // CommunityScreen import
+import '../achievement/achievement_screen.dart'; // AchievementScreen import
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -100,43 +103,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildHomeContent() {
-    return Column(
-      children: [
-        const Expanded(
-          child: HomeContent(),
-        ),
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: ElevatedButton(
-            onPressed: _navigateToMealRecord,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).primaryColor,
-              foregroundColor: Colors.white,
-              minimumSize: const Size(double.infinity, 50),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: const [
-                Icon(Icons.camera_alt),
-                SizedBox(width: 8),
-                Text(
-                  '식사 기록하기',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+  final List<Widget> _screens = [
+    const HomeContent(), // 홈 화면
+    const ReportScreen(), // 리포트 화면
+    const CommunityScreen(), // 커뮤니티 화면
+    AchievementScreen(), // 성과 화면
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -178,12 +150,7 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               IndexedStack(
                 index: _selectedIndex,
-                children: [
-                  const HomeContent(),
-                  const Placeholder(), // 리포트 화면
-                  const Placeholder(), // 설정 화면
-                  const Placeholder(), // 기타 화면
-                ],
+                children: _screens,
               ),
               if (_selectedIndex == 0)
                 Positioned(
@@ -231,14 +198,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 label: '리포트',
               ),
               BottomNavigationBarItem(
-                icon: Icon(Icons.settings_outlined),
-                activeIcon: Icon(Icons.settings),
-                label: '설정',
+                icon: Icon(Icons.people_outline),
+                activeIcon: Icon(Icons.people),
+                label: '커뮤니티',
               ),
               BottomNavigationBarItem(
-                icon: Icon(Icons.more_horiz),
-                activeIcon: Icon(Icons.more_horiz),
-                label: '기타',
+                icon: Icon(Icons.emoji_events_outlined),
+                activeIcon: Icon(Icons.emoji_events),
+                label: '성과',
               ),
             ],
             currentIndex: _selectedIndex,
