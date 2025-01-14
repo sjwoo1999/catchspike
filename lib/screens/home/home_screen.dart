@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../providers/user_provider.dart';
 import '../../utils/logger.dart';
 import '../../widgets/loading_indicator.dart';
+import '../../widgets/custom_drawer.dart'; // CustomDrawer import
 import 'components/home_components.dart';
 import '../onboarding/onboarding_screen.dart';
 import '../meal/meal_record_screen.dart';
@@ -16,7 +17,9 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool _isInitialized = false;
-  int _selectedIndex = 0;
+  int _selectedIndex = 0; // 네비게이션 바 인덱스
+  final GlobalKey<ScaffoldState> _scaffoldKey =
+      GlobalKey<ScaffoldState>(); // 추가
 
   @override
   void initState() {
@@ -32,7 +35,6 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final userProvider = context.read<UserProvider>();
 
-      // 이미 초기화되었거나 로딩 중인 경우 중복 실행 방지
       if (_isInitialized || userProvider.isLoading) return;
 
       await userProvider.initializeUser();
@@ -51,8 +53,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _handleAuthError(dynamic error) {
-    Logger.log('인증 오류 발생: $error');
-
     if (error.toString().contains("authentication token doesn't exist") ||
         error.toString().contains("KakaoClientException")) {
       _navigateToOnboarding();
@@ -92,19 +92,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  List<Widget> _screens = [
-    const HomeContent(), // 홈 화면
-    const Placeholder(), // 리포트 화면 (임시)
-    const Placeholder(), // 설정 화면 (임시)
-    const Placeholder(), // 기타 화면 (임시)
-  ];
-
-  void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-  }
-
   Widget _buildLoadingScreen() {
     return const Scaffold(
       body: Center(
@@ -113,16 +100,52 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildHomeContent() {
+    return Column(
+      children: [
+        const Expanded(
+          child: HomeContent(),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: ElevatedButton(
+            onPressed: _navigateToMealRecord,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).primaryColor,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 50),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: const [
+                Icon(Icons.camera_alt),
+                SizedBox(width: 8),
+                Text(
+                  '식사 기록하기',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer<UserProvider>(
       builder: (context, userProvider, child) {
-        // 초기화 중이거나 로딩 중인 경우 로딩 화면 표시
         if (!_isInitialized || userProvider.isLoading) {
           return _buildLoadingScreen();
         }
 
-        // 사용자가 없는 경우 온보딩 화면으로 이동
         if (userProvider.user == null) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _navigateToOnboarding();
@@ -130,8 +153,8 @@ class _HomeScreenState extends State<HomeScreen> {
           return _buildLoadingScreen();
         }
 
-        // 메인 홈 화면 표시
         return Scaffold(
+          key: _scaffoldKey,
           appBar: AppBar(
             title: const Text(
               'CATCHSPIKE',
@@ -141,15 +164,27 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             centerTitle: false,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.menu),
+                onPressed: () {
+                  _scaffoldKey.currentState?.openEndDrawer(); // 우측 Drawer 열기
+                },
+              ),
+            ],
           ),
+          endDrawer: const CustomDrawer(), // endDrawer로 우측 Drawer 설정
           body: Stack(
             children: [
-              // 화면 콘텐츠
               IndexedStack(
                 index: _selectedIndex,
-                children: _screens,
+                children: [
+                  const HomeContent(),
+                  const Placeholder(), // 리포트 화면
+                  const Placeholder(), // 설정 화면
+                  const Placeholder(), // 기타 화면
+                ],
               ),
-              // '홈' 화면에서만 식사 기록하기 버튼 표시
               if (_selectedIndex == 0)
                 Positioned(
                   bottom: 16.0,
@@ -209,7 +244,11 @@ class _HomeScreenState extends State<HomeScreen> {
             currentIndex: _selectedIndex,
             selectedItemColor: const Color(0xFFE30547),
             unselectedItemColor: Colors.grey,
-            onTap: _onItemTapped,
+            onTap: (index) {
+              setState(() {
+                _selectedIndex = index;
+              });
+            },
           ),
         );
       },

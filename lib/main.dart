@@ -44,7 +44,7 @@ Future<void> main() async {
   print("🌍 실행된 환경: ${firebaseEnv.toUpperCase()}");
 
   // 3. 환경 변수 검증
-  _validateEnvironmentVariables();
+  _validateEnvironmentVariables(firebaseEnv);
 
   // 4. Firebase 초기화
   if (Firebase.apps.isEmpty) {
@@ -58,33 +58,26 @@ Future<void> main() async {
       rethrow;
     }
 
-    // Firebase Emulator 설정 (개발 환경일 때만)
-    if (environment == 'development' &&
+    // Firebase Emulator 설정 (개발 환경에서만)
+    if (firebaseEnv == 'development' &&
         dotenv.env['USE_FIREBASE_EMULATOR'] == 'true') {
       print("⚙️ 개발 환경: Firebase Emulator 설정 중...");
 
-      // Firestore Emulator 설정
       FirebaseFirestore.instance.settings = Settings(
         host:
             '${dotenv.env['FIREBASE_EMULATOR_HOST']}:${dotenv.env['FIREBASE_FIRESTORE_PORT'] ?? '8080'}',
         sslEnabled: false,
         persistenceEnabled: false,
       );
-      print("🔥 Firestore Emulator 설정 완료");
-
-      // Functions Emulator 설정
       FirebaseFunctions.instance.useFunctionsEmulator(
         dotenv.env['FIREBASE_EMULATOR_HOST'] ?? '127.0.0.1',
         int.parse(dotenv.env['FIREBASE_FUNCTIONS_PORT'] ?? '5001'),
       );
-      print("🔥 Functions Emulator 설정 완료");
-
-      // Storage Emulator 설정
       FirebaseStorage.instance.useStorageEmulator(
         dotenv.env['FIREBASE_EMULATOR_HOST'] ?? '127.0.0.1',
         int.parse(dotenv.env['FIREBASE_STORAGE_PORT'] ?? '9199'),
       );
-      print("🔥 Storage Emulator 설정 완료");
+      print("🔥 Firebase Emulator 설정 완료");
     }
   }
 
@@ -107,17 +100,31 @@ Future<void> main() async {
 }
 
 // 환경 변수 검증 함수
-void _validateEnvironmentVariables() {
-  final requiredEnvVars = [
+void _validateEnvironmentVariables(String environment) {
+  final commonEnvVars = [
     'FIREBASE_ENV',
-    'USE_FIREBASE_EMULATOR',
-    'FIREBASE_EMULATOR_HOST',
-    'FIREBASE_FIRESTORE_PORT', // Updated key
-    'FIREBASE_FUNCTIONS_PORT', // Updated key
-    'FIREBASE_STORAGE_PORT', // Updated key
     'FIREBASE_ANDROID_API_KEY',
     'FIREBASE_IOS_API_KEY',
     'GET_CUSTOM_TOKEN_URL',
+  ];
+
+  final developmentEnvVars = [
+    'USE_FIREBASE_EMULATOR',
+    'FIREBASE_EMULATOR_HOST',
+    'FIREBASE_FIRESTORE_PORT',
+    'FIREBASE_FUNCTIONS_PORT',
+    'FIREBASE_STORAGE_PORT',
+  ];
+
+  final productionEnvVars = [
+    'ANALYZE_FOOD_IMAGE_URL',
+    'HEALTH_CHECK_URL',
+  ];
+
+  final requiredEnvVars = [
+    ...commonEnvVars,
+    if (environment == 'development') ...developmentEnvVars,
+    if (environment == 'production') ...productionEnvVars,
   ];
 
   for (final envVar in requiredEnvVars) {
@@ -173,7 +180,6 @@ class _MainScreenState extends State<MainScreen> {
     super.initState();
     _selectedIndex = widget.initialIndex ?? 0;
 
-    // 현재 실행된 환경 로깅
     final environment = dotenv.env['FIREBASE_ENV'] ?? 'production';
     print("📱 MainScreen 실행 중 - 환경: ${environment.toUpperCase()}");
   }
