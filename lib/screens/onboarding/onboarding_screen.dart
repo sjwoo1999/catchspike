@@ -51,8 +51,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       Logger.log("카카오 사용자 정보 획득 성공: ${kakaoUser.id}");
 
       // 3. UserDetails 객체 생성
+
+      final sanitizedUID =
+          kakaoUser.id.toString().replaceAll(":", "_"); // ✅ 변환 적용
+
       final userDetails = UserDetails(
-        uid: kakaoUser.id.toString(),
+        uid: sanitizedUID, // ✅ 변환된 UID 저장 → `kakao_3648739966`
         displayName:
             kakaoUser.kakaoAccount?.profile?.nickname ?? 'Unknown User',
         email: kakaoUser.kakaoAccount?.email ?? '',

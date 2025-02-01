@@ -1,194 +1,281 @@
-import 'dart:async';
-import 'dart:convert';
+// lib/services/meal_analysis_service.dart
+
 import 'dart:io';
-import 'package:http/http.dart' as http;
-import 'package:image/image.dart' as img; // 이미지 압축을 위한 패키지
-import 'package:cloud_functions/cloud_functions.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:flutter/foundation.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 
-import '../../firebase/config/firebase_config.dart';
-import '../../models/meal_record.dart';
-import '../../models/analysis_result.dart';
-import '../../utils/logger.dart';
-import '../../utils/exceptions.dart';
-import 'firebase_service.dart';
+import '../models/meal_record.dart';
+import '../models/analysis_result.dart';
+import '../models/food_item.dart';
 
+/// Firebase Storage 업로드 + Vision API 호출 + Firestore 캐싱
 class MealAnalysisService {
-  static const Duration _defaultTimeout = Duration(seconds: 30);
+  final String bucketName; // e.g. 'myapp-12345.appspot.com'
+  final String firebaseAuthToken; // 필요 시
+  final FirebaseFirestore firestore = FirebaseFirestore.instance;
 
-  final FirebaseService _firebaseService;
-  final FirebaseFunctions _functions;
-  final Connectivity _connectivity;
-  final FirebaseFirestore _firestore;
-
-  final String _apiKey;
-  final String _model;
+  final String visionApiKey = dotenv.env['GCP_VISION_API_KEY'] ?? '';
 
   MealAnalysisService({
-    FirebaseService? firebaseService,
-    FirebaseFunctions? functions,
-    Connectivity? connectivity,
-    FirebaseFirestore? firestore,
-  })  : _firebaseService = firebaseService ?? FirebaseService(),
-        _functions = functions ?? _initializeFunctions(),
-        _connectivity = connectivity ?? Connectivity(),
-        _firestore = firestore ?? FirebaseFirestore.instance,
-        _apiKey = FirebaseConfig.openAiKey,
-        _model = FirebaseConfig.openAiModel {
-    _validateOpenAISettings();
-  }
+    required this.bucketName,
+    required this.firebaseAuthToken,
+  });
 
-  static FirebaseFunctions _initializeFunctions() {
-    final functions = FirebaseFunctions.instanceFor(
-      region: FirebaseConfig.functionRegion,
+  /// (A) Firebase Storage에 이미지 업로드 (multipart)
+
+  Future<String> uploadImageToFirebase(File imageFile, String userId) async {
+    final sanitizedDate = DateTime.now().toIso8601String().split("T")[0];
+    final fileName = "meal_${DateTime.now().millisecondsSinceEpoch}.jpg";
+    final filePath = "meal_images/$userId/$sanitizedDate/$fileName";
+
+    final uploadUrl = Uri.parse(
+      'https://firebasestorage.googleapis.com/v0/b/$bucketName/o?uploadType=multipart&name=$filePath',
     );
 
-    if (kDebugMode) {
-      try {
-        functions.useFunctionsEmulator('localhost', 5001);
-        Logger.log('[INFO] Functions 에뮬레이터 사용 중');
-      } catch (e) {
-        Logger.log('[ERROR] 에뮬레이터 설정 실패: $e');
-      }
+    // ✅ Firebase ID Token 가져오기
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      throw Exception("Firebase 인증되지 않은 사용자입니다.");
     }
 
-    return functions;
-  }
-
-  void _validateOpenAISettings() {
-    if (_apiKey.isEmpty) {
-      throw OpenAIException('API Key가 설정되지 않았습니다. .env 파일을 확인하세요.');
+    final idToken = await currentUser.getIdToken(true);
+    if (idToken == null) {
+      throw Exception("Firebase ID Token을 가져오지 못했습니다.");
     }
-    if (_model.isEmpty) {
-      throw OpenAIException('모델 설정이 잘못되었습니다. .env 파일에서 OPENAI_MODEL을 확인하세요.');
-    }
-    Logger.log('[INFO] OpenAI 설정 확인 완료: Model=$_model');
-  }
 
-  Future<Map<String, dynamic>> analyzeMealImage(
-      String userId, MealRecord mealRecord, File imageFile) async {
-    try {
-      Logger.log('[INFO] YOLOv7 모델 호출을 통한 이미지 분석 중...');
+    final request = http.MultipartRequest('POST', uploadUrl)
+      ..headers['Authorization'] = 'Bearer $idToken'; // ✅ 인증 토큰 추가
 
-      // Step 1: YOLOv7 Python 스크립트 호출을 통한 이미지 분석
-      final yoloResult = await analyzeMealImageUsingYOLOv7(imageFile);
-      Logger.log('[INFO] YOLOv7 분석 결과: $yoloResult');
+    request.files.add(
+      await http.MultipartFile.fromPath('file', imageFile.path),
+    );
 
-      // Step 2: OpenAI Assistant API 호출을 통한 추가 이미지 분석
-      Logger.log('[INFO] OpenAI Assistant API 호출을 통한 이미지 추가 분석 중...');
-      final base64Image = compressAndEncodeImage(imageFile, quality: 50);
-      final openAIResult = await analyzeMealImageUsingAssistant(base64Image);
-      Logger.log('[INFO] OpenAI Assistant 분석 결과: $openAIResult');
-
-      // 분석 결과 통합
-      final combinedResult = mergeAnalysisResults(yoloResult, openAIResult);
-      Logger.log('[INFO] 통합된 이미지 분석 결과: $combinedResult');
-
-      return combinedResult;
-    } catch (e) {
-      Logger.log('[ERROR] 이미지 분석 중 오류 발생: $e');
-      throw Exception('이미지 분석 실패: $e');
+    final response = await request.send();
+    if (response.statusCode == 200) {
+      final respStr = await response.stream.bytesToString();
+      final jsonData = jsonDecode(respStr);
+      final name = jsonData['name'];
+      final imageUrl =
+          'https://firebasestorage.googleapis.com/v0/b/$bucketName/o/$name?alt=media';
+      return imageUrl;
+    } else {
+      final error = await response.stream.bytesToString();
+      throw Exception(
+          'Firebase Storage 업로드 실패: ${response.statusCode}, $error');
     }
   }
 
-  // YOLOv7 Python 스크립트를 호출하여 이미지 분석하는 메서드
-  Future<Map<String, dynamic>> analyzeMealImageUsingYOLOv7(
-      File imageFile) async {
-    try {
-      final tempDir = await getTemporaryDirectory();
-      final scriptPath = '${tempDir.path}/yolov7_inference.py';
-
-      final result = await Process.run('python3', [scriptPath, imageFile.path]);
-
-      if (result.exitCode != 0) {
-        throw Exception('YOLOv7 스크립트 실행 실패: ${result.stderr}');
-      }
-
-      final output = jsonDecode(result.stdout);
-      return output;
-    } catch (e) {
-      Logger.log('[ERROR] YOLOv7 이미지 분석 중 오류 발생: $e');
-      throw Exception('YOLOv7 이미지 분석 실패: $e');
+  /// (B) Vision API: imageUri 방식을 사용 (URL -> 라벨/텍스트 등)
+  Future<Map<String, dynamic>> callVisionAPI(String imageUrl) async {
+    if (visionApiKey.isEmpty) {
+      throw Exception('GCP_VISION_API_KEY가 설정되지 않았습니다.');
     }
-  }
 
-  // OpenAI Assistant를 사용하여 이미지 분석을 요청하는 메서드
-  Future<Map<String, dynamic>> analyzeMealImageUsingAssistant(
-      String base64Image) async {
-    final endpoint = 'https://api.openai.com/v1/chat/completions';
-    final messages = [
-      {
-        "role": "user",
-        "content": "This is a base64 encoded image: $base64Image.\n"
-            "Please describe the nutritional content and provide suggestions for improving the meal."
-      }
-    ];
-
-    Logger.log('[DEBUG] OpenAI 분석 API 요청 준비 중...');
-
-    final response = await http
-        .post(
-          Uri.parse(endpoint),
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer $_apiKey',
+    final endpoint = Uri.parse(
+        'https://vision.googleapis.com/v1/images:annotate?key=$visionApiKey');
+    final requestBody = {
+      "requests": [
+        {
+          "image": {
+            "source": {
+              "imageUri": imageUrl,
+            }
           },
-          body: jsonEncode({
-            'model': _model,
-            'messages': messages,
-            'temperature': 0.7,
-            'max_tokens': 1500,
-          }),
-        )
-        .timeout(_defaultTimeout);
+          "features": [
+            {"type": "LABEL_DETECTION", "maxResults": 10},
+            {"type": "TEXT_DETECTION", "maxResults": 5},
+          ]
+        }
+      ]
+    };
 
-    if (response.statusCode != 200) {
-      final error = jsonDecode(response.body);
-      throw OpenAIException(
-        error['error']['message'] ?? 'OpenAI Assistant 요청 실패',
-        code: error['error']['code'],
-      );
-    }
+    final response = await http.post(
+      endpoint,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(requestBody),
+    );
 
-    final data = jsonDecode(response.body);
-    if (data is! Map<String, dynamic>) {
-      throw Exception('OpenAI API 응답이 예상한 JSON 형식이 아닙니다.');
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final responses = data['responses'] as List<dynamic>;
+      if (responses.isEmpty) return {};
+      return responses[0] as Map<String, dynamic>;
+    } else {
+      throw Exception('Vision API 실패: ${response.statusCode} ${response.body}');
     }
-    return {'analysis': data['choices'][0]['message']['content']};
   }
 
-  // 두 가지 분석 결과를 통합하는 메서드
-  Map<String, dynamic> mergeAnalysisResults(
-      Map<String, dynamic> yoloResult, Map<String, dynamic> openAIResult) {
+  /// (C) Firestore 캐싱 로직
+  ///  - 'vision_cache' 컬렉션에 문서 ID=imageUrl 로 저장
+  Future<void> cacheVisionResult(
+      String imageUrl, Map<String, dynamic> result) async {
+    await firestore
+        .collection('vision_cache')
+        .doc(imageUrl)
+        .set({'analysis': result}, SetOptions(merge: true));
+  }
+
+  Future<Map<String, dynamic>?> loadCachedVisionResult(String imageUrl) async {
+    final doc = await firestore.collection('vision_cache').doc(imageUrl).get();
+    if (!doc.exists) return null;
+    final data = doc.data();
+    if (data == null || data['analysis'] == null) return null;
+    return Map<String, dynamic>.from(data['analysis']);
+  }
+
+  /// (D) Vision API 분석 (캐시 확인 후 호출)
+  Future<Map<String, dynamic>> analyzeImageWithVision(String imageUrl) async {
+    // 1) 캐시 확인
+    final cached = await loadCachedVisionResult(imageUrl);
+    if (cached != null) {
+      return cached;
+    }
+
+    // 2) Vision API 호출
+    final result = await callVisionAPI(imageUrl);
+
+    // 3) 캐시에 저장
+    await cacheVisionResult(imageUrl, result);
+
+    return result;
+  }
+
+  /// (E) Vision API 결과 파싱 → 필요한 데이터만 추출
+  ///     여기서는 실제 GI 정보가 없으므로, 시나리오상 GI 추출 로직이라 가정
+  Map<String, dynamic> parseVisionResult(Map<String, dynamic> visionData) {
+    final labels = (visionData['labelAnnotations'] ?? []) as List<dynamic>;
+    final texts = (visionData['textAnnotations'] ?? []) as List<dynamic>;
+
+    final topLabels = labels
+        .map((e) => e['description'] as String?)
+        .where((desc) => desc != null)
+        .toList();
+
+    String detectedText = '';
+    if (texts.isNotEmpty) {
+      detectedText = texts[0]['description'] ?? '';
+    }
+
+    // 여기에 GI 계산, FoodItem 매핑 로직 삽입 (Demo)
+    // 실제론 라벨별 GI를 lookup해서 foodItems 만들 수 있음
+    final foodItems = topLabels
+        .map(
+          (lbl) => {
+            'name': lbl,
+            'confidence': 0.9,
+            'giIndex': 55.0, // 예시
+          },
+        )
+        .toList();
+
     return {
-      "yolo_analysis": yoloResult,
-      "openai_analysis": openAIResult,
+      'labels': topLabels,
+      'detectedText': detectedText,
+      'foodItems': foodItems,
+      'giInfo': 55, // 임의
     };
   }
 
-  // 이미지 압축 및 인코딩 메서드
-  String compressAndEncodeImage(File imageFile, {int quality = 50}) {
-    final image = img.decodeImage(imageFile.readAsBytesSync());
-    if (image == null) {
-      throw Exception('이미지를 디코딩할 수 없습니다.');
-    }
-    final compressedImageBytes = img.encodeJpg(image, quality: quality);
-    return base64Encode(compressedImageBytes);
+  /// (F) AnalysisResult로 변환 (Demo)
+  /// 실제 GI, nutrients, etc. 구성
+  AnalysisResult buildAnalysisResult(
+    Map<String, dynamic> parseData, {
+    required String mealType,
+    required String imageUrl,
+  }) {
+    final foodJsonList = parseData['foodItems'] as List<dynamic>? ?? [];
+    final detectedFoods = foodJsonList
+        .map((json) => FoodItem.fromJson(json as Map<String, dynamic>))
+        .toList();
+
+    // Demo로 NutritionAnalysis를 간단하게 삽입
+    final nutrition = NutritionAnalysis(
+      glycemicIndex: 55.0,
+      calories: 300.0,
+      GI: 55.0,
+      estimatedGrams: 200.0,
+    );
+
+    final now = DateTime.now();
+    final metadata = AnalysisMetadata(
+      analyzedAt: now,
+      mealType: mealType,
+      imageUrl: imageUrl,
+      modelVersion: 'v1.0',
+    );
+
+    return AnalysisResult(
+      detectedFoods: detectedFoods,
+      nutritionAnalysis: nutrition,
+      comment: 'Demo analysis - GI = 55',
+      overallHealthScore: 70,
+      scoreBasis: 'Demo basis',
+      metadata: metadata,
+    );
   }
 
-  Future<bool> _checkConnectivity() async {
+  /// (G) 이미지 업로드 + Vision 분석 + Firestore 저장 + MealRecord 업데이트
+  Future<MealRecord> uploadAndAnalyzeMeal({
+    required File imageFile,
+    required String userId,
+    required String mealType,
+  }) async {
+    // 1) Firebase Storage 업로드
+    final imageUrl = await uploadImageToFirebase(imageFile, userId);
+
+    // 2) Firestore에 MealRecord 생성 (pending_analysis 상태)
+    final now = DateTime.now();
+    final docRef = firestore.collection('meal_records').doc();
+    final mealRecord = MealRecord(
+      id: docRef.id,
+      userId: userId,
+      imageUrl: imageUrl,
+      timestamp: now,
+      mealType: mealType,
+      status: 'pending_analysis',
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    await docRef.set(mealRecord.toJson());
+
+    // 3) Vision API 분석
     try {
-      final result = await _connectivity.checkConnectivity();
-      Logger.log('[DEBUG] 네트워크 상태 확인: Result=$result');
-      return result != ConnectivityResult.none;
+      final rawVisionResult = await analyzeImageWithVision(imageUrl);
+      final parsed = parseVisionResult(rawVisionResult);
+
+      // 4) AnalysisResult 모델로 변환
+      final analysisRes = buildAnalysisResult(
+        parsed,
+        mealType: mealType,
+        imageUrl: imageUrl,
+      );
+
+      // 5) MealRecord 업데이트 (analysisResult, status=analysis_complete)
+      final updatedRecord = mealRecord.copyWith(
+        analysisResult: analysisRes,
+        status: 'analysis_complete',
+        analyzedAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
+      await docRef.update(updatedRecord.toJson());
+
+      return updatedRecord;
     } catch (e) {
-      Logger.log('[ERROR] 연결 상태 확인 실패: $e');
-      return false;
+      // 6) 에러 발생 시 MealRecord 업데이트 (status=error)
+      final errorRecord = mealRecord.copyWith(
+        status: 'error',
+        error: e.toString(),
+        updatedAt: DateTime.now(),
+      );
+      await docRef.update(errorRecord.toJson());
+      return errorRecord;
     }
   }
 }

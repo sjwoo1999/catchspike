@@ -44,5 +44,7 @@ app.*.map.json
 
 # 환경 변수 파일
 .env
+.env.development
+.env.production
 google-services.json
 firebase_options.dart

@@ -37,16 +37,14 @@ class FirebaseService {
   }
 
   Future<void> saveUser(User user) async {
-    try {
-      await _firestore
-          .collection('users')
-          .doc(user.id)
-          .set(user.toFirestore(), SetOptions(merge: true));
-      Logger.log('사용자 정보 저장 성공: ${user.id}');
-    } catch (e) {
-      Logger.log('사용자 정보 저장 실패: $e');
-      rethrow;
+    if (_auth.currentUser?.uid != user.id) {
+      throw Exception('FirebaseAuth UID와 User ID가 일치하지 않습니다.');
     }
+
+    await _firestore
+        .collection('users')
+        .doc(user.id)
+        .set(user.toFirestore(), SetOptions(merge: true));
   }
 
   Future<void> updateUserOnboardingStatus({
@@ -172,8 +170,8 @@ class FirebaseService {
 
   Future<String> uploadMealImage(File imageFile, String userId) async {
     try {
-      final dateStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final dateStr = DateFormat('yyyy-MM-dd').format(DateTime.now()); // 올바른 형식
+      final fileName = '${DateTime.now().millisecondsSinceEpoch}.jpg'; // 숫자로 시작
 
       final ref = _storage
           .ref()

@@ -1,5 +1,15 @@
 {
   "projects": {
     "default": "catchspike-8163d"
-  }
+  },
+  "targets": {
+    "catchspike-8163d": {
+      "storage": {
+        "rules": [
+          "catchspike-8163d.appspot.com"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

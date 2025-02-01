@@ -1,5 +1,5 @@
 const { initializeApp, cert } = require("firebase-admin/app");
-const { getFirestore } = require("firebase-admin/firestore");
+// const { getFirestore } = require("firebase-admin/firestore");
 const { onRequest } = require("firebase-functions/v2/https");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { getAuth } = require("firebase-admin/auth");
@@ -14,7 +14,7 @@ initializeApp({
 });
 
 const auth = getAuth();
-const db = getFirestore();
+// const db = getFirestore();
 const storage = new Storage();
 
 // Function Global Options
@@ -38,10 +38,10 @@ async function getImageAsBase64(bucketName, fileName) {
 
     const [fileBuffer] = await file.download();
     const image = Buffer.from(fileBuffer).toString("base64");
-    console.log("Image successfully converted to Base64 format.");
+    // console.log("Image successfully converted to Base64 format.");
     return image;
   } catch (error) {
-    console.error("Error during image download or conversion:", error);
+    // console.error("Error during image download or conversion:", error);
     throw new Error("Failed to download or convert image to Base64.");
   }
 }
@@ -66,10 +66,10 @@ async function analyzeImageWithYOLOv7(imageUrl) {
       throw new Error(`YOLOv7 요청 실패: 상태 코드 ${response.status}`);
     }
 
-    console.log("YOLOv7 분석 성공:", response.data);
+    // console.log("YOLOv7 분석 성공:", response.data);
     return response.data;
   } catch (error) {
-    console.error("YOLOv7 이미지 분석 중 오류 발생:", error);
+    // console.error("YOLOv7 이미지 분석 중 오류 발생:", error);
     throw new Error("YOLOv7 분석 실패");
   }
 }
@@ -88,10 +88,10 @@ async function createThread() {
       },
     );
     const threadId = response.data.id;
-    console.log("Thread created successfully:", threadId);
+    // console.log("Thread created successfully:", threadId);
     return threadId;
   } catch (error) {
-    console.error("Failed to create thread:", error);
+    // console.error("Failed to create thread:", error);
     throw error;
   }
 }
@@ -112,7 +112,7 @@ async function createRun(threadId, assistantId) {
       },
     );
     const runId = response.data.id;
-    console.log("Run created successfully:", runId);
+    // console.log("Run created successfully:", runId);
     return runId;
   } catch (error) {
     console.error("Failed to create run:", error);
@@ -136,7 +136,7 @@ async function createMessage(threadId, runId, base64Image, mealType) {
         },
       },
     );
-    console.log("Message created successfully:", response.data);
+    //console.log("Message created successfully:", response.data);
     return response.data;
   } catch (error) {
     console.error("Failed to create message:", error);
@@ -153,7 +153,7 @@ exports.analyzeFoodImage = onRequest(
     memory: "512MB",
   },
   async (req, res) => {
-    console.log("🔍 analyzeFoodImage invoked:", { data: req.body });
+    // console.log("🔍 analyzeFoodImage invoked:", { data: req.body });
 
     if (!req.headers.authorization) {
       console.warn("⚠️ Unauthorized access attempt detected");
@@ -202,104 +202,62 @@ exports.analyzeFoodImage = onRequest(
         openai_analysis: openAIResult,
       };
 
-      console.log("✅ Image analysis successful:", result);
+      // console.log("✅ Image analysis successful:", result);
       return res.status(200).send(result);
     } catch (error) {
       console.error("❌ Error during image analysis:", error);
-      return res
-        .status(500)
-        .send({ error: "internal", message: "Image analysis failed" });
+      return res.status(500).send({
+          error: "internal",
+          message: "Image analysis failed",
+      });
     }
   },
 );
 
 // getCustomToken Cloud Function
-exports.getCustomToken = onRequest(
-  {
-    cors: true,
-    maxInstances: 10,
-    timeoutSeconds: 30,
-    memory: "256MB",
-  },
-  async (req, res) => {
-    try {
-      if (req.method === "OPTIONS") {
-        res.set("Access-Control-Allow-Methods", "POST");
-        res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
-        res.set("Access-Control-Max-Age", "3600");
-        return res.status(204).send("");
-      }
+exports.getCustomToken = onRequest(async (req, res) => {
+  const { id, email, nickname, profileImageUrl } = req.body;
 
-      if (req.method !== "POST") {
-        return res.status(405).json({
-          error: "method_not_allowed",
-          message: "Only POST method is allowed.",
-        });
-      }
+  if (!id || !email || !nickname) {
+    return res.status(400).json({
+      error: "missing_fields",
+      message: "Required fields are missing.",
+    });
+  }
 
-      const { id, email, nickname, profileImageUrl } = req.body;
+  // ✅ UID 변환 방식을 ":" → "_" 로 변경하여 Firestore 규칙과 일치하도록 함
+  const sanitizedUid = `kakao_${id.replace(/[^a-zA-Z0-9]/g, "_")}`;
 
-      if (!id || !email || !nickname) {
-        return res.status(400).json({
-          error: "missing_fields",
-          message: "Required fields are missing.",
-          required: ["id", "email", "nickname"],
-          received: { id, email, nickname },
-        });
-      }
-
-      const uid = `kakao:${id}`;
-
-      await auth.getUser(uid).catch(async (error) => {
-        if (error.code === "auth/user-not-found") {
-          return auth.createUser({
-            uid,
-            email,
-            displayName: nickname,
-            photoURL: profileImageUrl,
-          });
-        }
-        throw error;
-      });
-
-      await auth.updateUser(uid, {
-        displayName: nickname,
-        photoURL: profileImageUrl,
-      });
-
-      await db.collection("users").doc(uid).set(
-        {
+  try {
+    await auth.getUser(sanitizedUid).catch(async (error) => {
+      if (error.code === "auth/user-not-found") {
+        return auth.createUser({
+          uid: sanitizedUid,
           email,
-          nickname,
-          profileImageUrl,
-          provider: "kakao",
-          updatedAt: new Date(),
-        },
-        { merge: true },
-      );
-
-      const customToken = await auth.createCustomToken(uid);
-
-      return res.status(200).json({
-        token: customToken,
-        status: "success",
-      });
-    } catch (error) {
-      console.error("❌ Error during token generation:", error);
-
-      const errorResponse = {
-        error: error.code || "internal_error",
-        message: error.message || "Server error occurred.",
-      };
-
-      if (error.code === "auth/email-already-exists") {
-        errorResponse.message = "Email is already in use.";
+          displayName: nickname,
+          photoURL: profileImageUrl,
+        });
       }
+      throw error;
+    });
 
-      return res.status(error.code ? 400 : 500).json(errorResponse);
-    }
-  },
-);
+    await auth.updateUser(sanitizedUid, {
+      displayName: nickname,
+      photoURL: profileImageUrl,
+    });
+
+    const customToken = await auth.createCustomToken(sanitizedUid);
+
+    return res.status(200).json({ token: customToken });
+  } catch (error) {
+    console.error("❌ Error creating custom token:", error);
+    return res.status(500).json({
+      error: "internal_error",
+      message: error.message,
+    });
+  }
+});
+
 
 // healthCheck Cloud Function
 exports.healthCheck = onRequest(

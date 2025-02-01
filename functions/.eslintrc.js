@@ -6,23 +6,22 @@ module.exports = {
     commonjs: true,
   },
   parserOptions: {
-    ecmaVersion: 2022,
-    sourceType: "commonjs",
+    ecmaVersion: "latest",
+    sourceType: "module",
   },
-  extends: [
-    "eslint:recommended",
-    "plugin:prettier/recommended", // Prettier 설정을 통합
-  ],
+  extends: ["eslint:recommended", "plugin:prettier/recommended"],
   plugins: ["prettier"],
   rules: {
-    "no-unused-vars": "warn",
+    "no-unused-vars": ["warn", { argsIgnorePattern: "^_" }], // `_`로 시작하는 변수 무시
     "no-undef": "error",
-    semi: ["error", "always"],
-    quotes: ["error", "double"],
     "no-trailing-spaces": "error",
+    "no-console": process.env.NODE_ENV === "production" ? "error" : "warn", // 개발 환경에서는 허용, 배포 환경에서는 금지
     "object-curly-spacing": ["error", "always"],
-    "comma-dangle": "off",
-    "prettier/prettier": "error", // Prettier 규칙 위반 시 오류 발생
+    "comma-dangle": ["error", "always-multiline"], // 멀티라인에서는 항상 쉼표 유지
+    semi: ["error", "always"], // 세미콜론 강제
+    quotes: ["error", "double"], // 더블 쿼트 강제
+    "prettier/prettier": "error",
+    strict: ["error", "global"], // use strict 강제 적용
   },
   globals: {
     require: "readonly",

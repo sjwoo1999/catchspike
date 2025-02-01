@@ -1,32 +1,4 @@
 {
-  "flutter": {
-    "platforms": {
-      "android": {
-        "default": {
-          "projectId": "catchspike-8163d",
-          "appId": "1:784791191729:android:ca13f868b14f34a8daa290",
-          "fileOutput": "android/app/google-services.json"
-        }
-      },
-      "ios": {
-        "default": {
-          "projectId": "catchspike-8163d",
-          "appId": "1:784791191729:ios:f904fd370a0c0204daa290",
-          "uploadDebugSymbols": false,
-          "fileOutput": "ios/Runner/GoogleService-Info.plist"
-        }
-      },
-      "dart": {
-        "lib/firebase_options.dart": {
-          "projectId": "catchspike-8163d",
-          "configurations": {
-            "android": "1:784791191729:android:ca13f868b14f34a8daa290",
-            "ios": "1:784791191729:ios:f904fd370a0c0204daa290"
-          }
-        }
-      }
-    }
-  },
   "functions": [
     {
       "source": "functions",
@@ -49,9 +21,14 @@
     "indexes": "firestore.indexes.json"
   },
   "storage": {
+    "target": "rules",
     "rules": "storage.rules"
   },
   "emulators": {
+    "auth": {
+      "port": 9099,
+      "host": "127.0.0.1"
+    },
     "functions": {
       "port": 5001,
       "host": "127.0.0.1"

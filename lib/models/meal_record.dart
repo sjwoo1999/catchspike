@@ -10,7 +10,7 @@ class MealRecord {
   final DateTime timestamp;
   final String mealType;
   final AnalysisResult? analysisResult;
-  final String status;
+  final String status; // e.g., 'pending_analysis', 'analysis_complete', 'error'
   final DateTime? analyzedAt;
   final String? error;
   final DateTime? createdAt;
@@ -30,7 +30,7 @@ class MealRecord {
     this.updatedAt,
   });
 
-  // Firestore 문서에서 MealRecord 객체 생성
+  // Firestore 문서 -> MealRecord 객체
   factory MealRecord.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     return MealRecord(
@@ -41,7 +41,8 @@ class MealRecord {
       mealType: data['mealType'] as String,
       analysisResult: data['analysisResult'] != null
           ? AnalysisResult.fromJson(
-              data['analysisResult'] as Map<String, dynamic>)
+              data['analysisResult'] as Map<String, dynamic>,
+            )
           : null,
       status: data['status'] as String? ?? 'pending_analysis',
       analyzedAt: data['analyzedAt'] != null
@@ -57,7 +58,7 @@ class MealRecord {
     );
   }
 
-  // MealRecord 객체를 Firestore 문서 데이터로 변환
+  // MealRecord -> Firestore 문서
   Map<String, dynamic> toJson() {
     return {
       'userId': userId,
@@ -77,7 +78,7 @@ class MealRecord {
     };
   }
 
-  // 객체 복사본 생성 및 특정 필드 업데이트
+  // 객체 복사본 생성 (부분 필드 변경)
   MealRecord copyWith({
     String? id,
     String? userId,

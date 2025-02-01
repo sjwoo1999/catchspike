@@ -46,18 +46,27 @@ class AuthService {
         );
       }
 
-      final customToken = await getFirebaseCustomToken(
+      final tokenData = await getFirebaseCustomToken(
         userDetails.uid,
         userDetails.email ?? '',
         userDetails.displayName,
         userDetails.photoURL ?? '',
       );
+      final customToken = tokenData["customToken"]!;
+      final sanitizedUid = tokenData["sanitizedUid"]!;
+
       Logger.log("Firebase 커스텀 토큰 획득 성공");
 
       final userCredential =
           await _firebaseAuth.signInWithCustomToken(customToken);
 
       if (userCredential.user != null) {
+        // ✅ Firebase 인증 후, UID 검증
+        if (userCredential.user!.uid != "kakao_${userDetails.uid}") {
+          throw Exception(
+              "Firebase 인증 후 UID 불일치! (${userCredential.user!.uid} ≠ kakao_${userDetails.uid})");
+        }
+
         final user = app_user.User(
           id: userCredential.user!.uid,
           name: userDetails.displayName,
@@ -68,6 +77,7 @@ class AuthService {
         );
 
         await _firebaseService.saveUser(user);
+
         Logger.log("사용자 정보 Firebase 저장 성공: ${user.id}");
 
         return user;
@@ -97,66 +107,36 @@ class AuthService {
     }
   }
 
-  Future<String> getFirebaseCustomToken(
+  Future<Map<String, String>> getFirebaseCustomToken(
       String id, String email, String nickname, String profileImageUrl) async {
-    try {
-      final customTokenUrl = dotenv.env['GET_CUSTOM_TOKEN_URL'];
-      Logger.log("Custom Token URL 확인: $customTokenUrl");
-
-      if (customTokenUrl == null || customTokenUrl.isEmpty) {
-        throw Exception('Custom Token URL이 설정되지 않았습니다. (.env 파일을 확인해주세요)');
-      }
-
-      final url = Uri.parse(customTokenUrl);
-      Logger.log("토큰 요청 URL: $url");
-
-      final requestBody = {
-        "id": id,
-        "email": email,
-        "nickname": nickname,
-        "profileImageUrl": profileImageUrl,
-      };
-
-      Logger.log("요청 데이터: ${json.encode(requestBody)}");
-
-      final response = await http
-          .post(
-        url,
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-        },
-        body: json.encode(requestBody),
-      )
-          .timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          throw Exception('토큰 요청 시간이 초과되었습니다.');
-        },
-      );
-
-      Logger.log("토큰 요청 응답 상태 코드: ${response.statusCode}");
-      Logger.log("토큰 요청 응답 본문: ${response.body}");
-
-      if (response.statusCode == 200) {
-        try {
-          final data = json.decode(response.body);
-          if (data['token'] != null) {
-            return data['token'];
-          }
-          throw Exception('응답에 토큰이 없습니다: ${response.body}');
-        } catch (e) {
-          Logger.log("JSON 파싱 실패: $e");
-          throw Exception('응답 데이터 처리 중 오류가 발생했습니다.');
-        }
-      }
-
-      final errorMessage = _getErrorMessage(response.statusCode, response.body);
-      throw Exception(errorMessage);
-    } catch (e) {
-      Logger.log("Firebase 커스텀 토큰 생성 실패: $e");
-      rethrow;
+    if (dotenv.env['GET_CUSTOM_TOKEN_URL']?.isEmpty ?? true) {
+      throw Exception('Custom Token URL이 설정되지 않았습니다. (.env 파일 확인 필요)');
     }
+
+    final url = Uri.parse(dotenv.env['GET_CUSTOM_TOKEN_URL']!);
+    final sanitizedUid = "kakao_${id.replaceAll(RegExp(r"[^a-zA-Z0-9]"), "_")}";
+
+    final requestBody = {
+      "id": id,
+      "uid": sanitizedUid, // ✅ 변환된 UID 전달
+      "email": email,
+      "nickname": nickname,
+      "profileImageUrl": profileImageUrl,
+    };
+
+    final response = await http.post(
+      url,
+      headers: {"Content-Type": "application/json"},
+      body: json.encode(requestBody),
+    );
+
+    if (response.statusCode != 200) {
+      Logger.log("Custom Token 요청 실패: ${response.body}");
+      throw Exception('Custom Token 요청 실패');
+    }
+
+    final customToken = json.decode(response.body)['token'];
+    return {"customToken": customToken, "sanitizedUid": sanitizedUid};
   }
 
   String _getErrorMessage(int statusCode, String responseBody) {
